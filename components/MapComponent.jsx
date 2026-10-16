@@ -1,92 +1,79 @@
 'use client';
-import { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 
-// Custom marker fix for Leaflet in Next.js
-const customIcon = L.icon({
+const customIcon = new L.Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
-  shadowSize: [41, 41]
 });
 
-const simIcon = L.icon({
+const simIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
-  shadowSize: [41, 41]
 });
 
-// Component to handle map clicks for simulation
-function ClickHandler({ onMapClick }) {
+function LocationSelector({ onSelect }) {
   useMapEvents({
     click(e) {
-      onMapClick(e.latlng);
+      if (onSelect) onSelect(e.latlng);
     },
   });
   return null;
 }
 
-export default function MapComponent({ points, onSelectLocation, simulatedPoint }) {
-  // Centre sur la Tunisie (Tunis / Sousse)
-  const position = [36.8065, 10.1815];
+export default function MapComponent({ points = [], onSelectLocation, simulatedPoint }) {
+  const getCoords = (p, idx) => {
+    // 1. Utilise les coordonnées GPS exactes si elles ont été saisies par l'équipe
+    if (p.latitude && p.longitude) return [Number(p.latitude), Number(p.longitude)];
+    
+    // 2. Sinon, positionne par gouvernorat pour les anciens points
+    if (p.gouvernorat === 'Ariana') return [36.8625, 10.1932];
+    if (p.gouvernorat === 'Sousse') return [35.8361, 10.5920];
+    if (p.gouvernorat === 'Ben Arous') return [36.7230, 10.2280];
+    if (p.gouvernorat === 'Monastir') return [35.7780, 10.8262];
+    if (p.gouvernorat === 'Sfax') return [34.7406, 10.7603];
+    if (p.gouvernorat === 'Nabeul') return [36.4513, 10.7357];
+    if (p.gouvernorat === 'Bizerte') return [37.2744, 9.8739];
+    
+    return [36.8065 + (idx * 0.015), 10.1815 + (idx * 0.015)];
+  };
 
   return (
-    <MapContainer center={position} zoom={8} style={{ width: '100%', height: '100%' }}>
+    <MapContainer center={[36.0, 10.2]} zoom={7} style={{ height: '100%', width: '100%' }}>
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution="&copy; OpenStreetMap contributors"
       />
+      <LocationSelector onSelect={onSelectLocation} />
       
-      <ClickHandler onMapClick={onSelectLocation} />
+      {points.map((p, idx) => (
+        <Marker key={p.id_pdv || idx} position={getCoords(p, idx)} icon={customIcon}>
+          <Popup>
+            <div style={{ fontFamily: 'sans-serif', lineHeight: '1.5', minWidth: '170px' }}>
+              <strong style={{ fontSize: '14px', color: '#1e3a8a' }}>{p.nom_pdv}</strong><br />
+              {p.client_nom && <span style={{ fontSize: '11px', background: '#dbeafe', color: '#1d4ed8', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>{p.client_nom}</span>}<br />
+              <b>Type :</b> {p.type_pdv}<br />
+              <b>Zone :</b> {p.gouvernorat} {p.delegation ? `(${p.delegation})` : ''}<br />
+              <b>CA Moyen :</b> {Number(p.ca_historique_moyen).toLocaleString()} TND
+              {p.ajoute_par && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', borderTop: '1px solid #e2e8f0', paddingTop: '2px' }}>Ajouté par : {p.ajoute_par}</div>}
+            </div>
+          </Popup>
+        </Marker>
+      ))}
 
-      {/* Points de vente existants SOPAT */}
-      {points.map((pt) => {
-        // Extraction lat/lng depuis PostGIS WKB ou coordonnées stockées
-        // Pour faire simple dans le MVP, supposons des propriétés lat/lng ou parsing geom si présent
-        // Ici on gère si le point a des coord directes ou stockées
-        let lat = pt.latitude || 36.8;
-        let lng = pt.longitude || 10.18;
-        
-        // Si les geom postgis sont sous forme de texte ou coordonnées simulées pour le test
-        if (pt.nom_pdv && pt.nom_pdv.includes('Ariana')) { lat = 36.8625; lng = 10.1932; }
-        if (pt.nom_pdv && pt.nom_pdv.includes('Sousse')) { lat = 35.8361; lng = 10.5920; }
-        if (pt.nom_pdv && pt.nom_pdv.includes('Mourouj')) { lat = 36.7230; lng = 10.2280; }
-
-        return (
-          <Marker key={pt.id_pdv || Math.random()} position={[lat, lng]} icon={customIcon}>
-            <Popup>
-              <div style={{ minWidth: '160px' }}>
-                <strong style={{ color: '#1e293b' }}>{pt.nom_pdv}</strong>
-                <p style={{ margin: '5px 0', fontSize: '13px' }}>
-                  <b>Type :</b> {pt.type_pdv}<br/>
-                  <b>Gouvernorat :</b> {pt.gouvernorat}<br/>
-                  <b>CA Moyen :</b> {pt.ca_historique_moyen ? pt.ca_historique_moyen.toLocaleString() + ' TND' : 'N/A'}
-                </p>
-              </div>
-            </Popup>
-          </Marker>
-        );
-      })}
-
-      {/* Point simulé par l'utilisateur */}
       {simulatedPoint && (
         <Marker position={[simulatedPoint.lat, simulatedPoint.lng]} icon={simIcon}>
           <Popup>
-            <div>
-              <strong style={{ color: '#7c3aed' }}>📍 Emplacement Simulé</strong>
-              <p style={{ margin: '5px 0', fontSize: '13px' }}>
-                <b>CA Prévisionnel estimé :</b> 88,500 TND / mois<br/>
-                <b>Population (10 min) :</b> ~22,400 hab.<br/>
-                <b>Risque Cannibalisme :</b> Faible (9%)
-              </p>
-            </div>
+            <b>Nouvelle implantation simulée</b><br />
+            Lat: {simulatedPoint.lat.toFixed(4)}, Lng: {simulatedPoint.lng.toFixed(4)}
           </Popup>
         </Marker>
       )}
