@@ -74,7 +74,7 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
       weight: isSelected ? 3 : 2,
       opacity: 1,
       color: isSelected ? '#1d4ed8' : '#ffffff',
-      fillOpacity: isSelected ? 0.65 : 0.45,
+      fillOpacity: isSelected ? 0.6 : 0.35,
     };
   };
 
@@ -91,8 +91,8 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
   return (
     <MapContainer center={[35.8, 10.0]} zoom={7} style={{ height: '100%', width: '100%' }}>
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        attribution="&copy; OpenStreetMap & CartoDB"
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution="&copy; OpenStreetMap contributors"
       />
       
       <MapUpdater center={mapCenter} zoom={selectedGouv === 'Tous' ? 7 : 10} />
