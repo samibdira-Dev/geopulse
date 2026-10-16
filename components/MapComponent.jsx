@@ -1,8 +1,9 @@
 'use client';
 import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMapEvents, useMap } from 'react-leaflet';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { GOUV_COLORS, normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
 
 const customIcon = new L.Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -20,15 +21,6 @@ const simIcon = new L.Icon({
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
 });
-
-const GOUV_COLORS = {
-  'Tunis': '#3b82f6', 'Ariana': '#ef4444', 'Ben Arous': '#10b981', 'Manouba': '#f59e0b',
-  'Nabeul': '#8b5cf6', 'Zaghouan': '#ec4899', 'Bizerte': '#14b8a6', 'Béja': '#f97316',
-  'Jendouba': '#6366f1', 'Le Kef': '#84cc16', 'Siliana': '#06b6d4', 'Sousse': '#d946ef',
-  'Monastir': '#eab308', 'Mahdia': '#22c55e', 'Sfax': '#a855f7', 'Kairouan': '#0ea5e9',
-  'Kasserine': '#f43f5e', 'Sidi Bouzid': '#34d399', 'Gabès': '#fbbf24', 'Medenine': '#c084fc',
-  'Tataouine': '#38bdf8', 'Gafsa': '#fb7185', 'Tozeur': '#2dd4bf', 'Kébili': '#facc15'
-};
 
 function MapUpdater({ center, zoom }) {
   const map = useMap();
@@ -64,16 +56,18 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
     return [36.8065 + (idx * 0.015), 10.1815 + (idx * 0.015)];
   };
 
+  // Nom canonique du gouvernorat (les variantes du GeoJSON sont normalisées).
   const getGouvName = (feature) => {
-    const p = feature.properties;
-    return p.nom || p.name || p.name_fr || p.NAME_1 || p.governorat || 'Tunisie';
+    const p = feature.properties || {};
+    const raw = p.nom || p.name || p.name_fr || p.NAME_1 || p.governorat || 'Tunisie';
+    return normalizeGouvernorat(raw) || raw;
   };
 
-  const geoStyle = (feature) => {
+  const geoStyle = useCallback((feature) => {
     const name = getGouvName(feature);
     const color = GOUV_COLORS[name] || '#3b82f6';
-    const isSelected = selectedGouv && selectedGouv !== 'Tous' && name.toLowerCase().includes(selectedGouv.toLowerCase());
-    
+    const isSelected = !!selectedGouv && selectedGouv !== 'Tous' && sameGouvernorat(name, selectedGouv);
+
     return {
       fillColor: color,
       weight: isSelected ? 3 : 2,
@@ -81,13 +75,16 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
       color: '#ffffff',
       fillOpacity: isSelected ? 0.75 : 0.5,
     };
-  };
+  }, [selectedGouv]);
 
   const onEachGouv = (feature, layer) => {
     const name = getGouvName(feature);
     layer.bindTooltip(`<b>Gouvernorat : ${name}</b>`, { sticky: true });
     layer.on({
       click: (e) => {
+        // Empêche l'événement de remonter à la carte (LocationSelector),
+        // sinon le géocodage inverse part deux fois pour un seul clic.
+        L.DomEvent.stopPropagation(e);
         if (onSelectLocation) onSelectLocation(e.latlng);
       }
     });
@@ -105,7 +102,7 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
 
       {geoData && (
         <GeoJSON 
-          key={selectedGouv + JSON.stringify(geoData)} 
+          key={selectedGouv}
           data={geoData} 
           style={geoStyle} 
           onEachFeature={onEachGouv} 
