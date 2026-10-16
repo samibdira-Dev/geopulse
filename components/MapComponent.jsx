@@ -45,8 +45,12 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
   const [geoData, setGeoData] = useState(null);
 
   useEffect(() => {
-    fetch('https://raw.githubusercontent.com/riatelab/tunisie/master/data/tn-gouvernorats.geojson')
-      .then((res) => res.json())
+    // Fichier hébergé dans le projet (dossier public/) : plus de dépendance à un dépôt externe.
+    fetch('/tn-gouvernorats.geojson')
+      .then((res) => {
+        if (!res.ok) throw new Error('GeoJSON introuvable (HTTP ' + res.status + ')');
+        return res.json();
+      })
       .then((data) => setGeoData(data))
       .catch((err) => console.error('Erreur GeoJSON:', err));
   }, []);
@@ -59,7 +63,8 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
   // Nom canonique du gouvernorat (les variantes du GeoJSON sont normalisées).
   const getGouvName = (feature) => {
     const p = feature.properties || {};
-    const raw = p.nom || p.name || p.name_fr || p.NAME_1 || p.governorat || 'Tunisie';
+    // shapeName : propriété utilisée par geoBoundaries
+    const raw = p.shapeName || p.nom || p.name || p.name_fr || p.NAME_1 || p.governorat || 'Tunisie';
     return normalizeGouvernorat(raw) || raw;
   };
 
