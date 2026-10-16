@@ -21,22 +21,14 @@ const simIcon = new L.Icon({
   popupAnchor: [1, -34],
 });
 
-// Palette de couleurs distinctes pour les gouvernorats
-const GOUV_COLORS = [
-  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', 
-  '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16',
-  '#06b6d4', '#d946ef', '#eab308', '#22c55e', '#a855f7',
-  '#0ea5e9', '#f43f5e', '#34d399', '#fbbf24', '#c084fc',
-  '#38bdf8', '#fb7185', '#2dd4bf', '#facc15'
-];
-
-function getGovernorateColor(name) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return GOUV_COLORS[Math.abs(hash) % GOUV_COLORS.length];
-}
+const GOUV_COLORS = {
+  'Tunis': '#3b82f6', 'Ariana': '#ef4444', 'Ben Arous': '#10b981', 'Manouba': '#f59e0b',
+  'Nabeul': '#8b5cf6', 'Zaghouan': '#ec4899', 'Bizerte': '#14b8a6', 'Béja': '#f97316',
+  'Jendouba': '#6366f1', 'Le Kef': '#84cc16', 'Siliana': '#06b6d4', 'Sousse': '#d946ef',
+  'Monastir': '#eab308', 'Mahdia': '#22c55e', 'Sfax': '#a855f7', 'Kairouan': '#0ea5e9',
+  'Kasserine': '#f43f5e', 'Sidi Bouzid': '#34d399', 'Gabès': '#fbbf24', 'Medenine': '#c084fc',
+  'Tataouine': '#38bdf8', 'Gafsa': '#fb7185', 'Tozeur': '#2dd4bf', 'Kébili': '#facc15'
+};
 
 function MapUpdater({ center, zoom }) {
   const map = useMap();
@@ -64,30 +56,25 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
     fetch('https://raw.githubusercontent.com/riatelab/tunisie/master/data/tn-gouvernorats.geojson')
       .then((res) => res.json())
       .then((data) => setGeoData(data))
-      .catch((err) => console.error('Erreur chargement limites gouvernorats:', err));
+      .catch((err) => console.error('Erreur chargement GeoJSON:', err));
   }, []);
 
   const getCoords = (p, idx) => {
     if (p.latitude && p.longitude) return [Number(p.latitude), Number(p.longitude)];
-    if (p.gouvernorat === 'Ariana') return [36.8625, 10.1932];
-    if (p.gouvernorat === 'Sousse') return [35.8361, 10.5920];
-    if (p.gouvernorat === 'Ben Arous') return [36.7230, 10.2280];
-    if (p.gouvernorat === 'Monastir') return [35.7780, 10.8262];
-    if (p.gouvernorat === 'Sfax') return [34.7406, 10.7603];
     return [36.8065 + (idx * 0.015), 10.1815 + (idx * 0.015)];
   };
 
   const geoStyle = (feature) => {
-    const name = feature.properties.name_fr || feature.properties.NAME_1 || 'Gouvernorat';
-    const color = getGovernorateColor(name);
+    const name = feature.properties.name_fr || feature.properties.NAME_1 || '';
+    const color = GOUV_COLORS[name] || '#3b82f6';
     const isSelected = selectedGouv && selectedGouv !== 'Tous' && name.toLowerCase().includes(selectedGouv.toLowerCase());
     
     return {
       fillColor: color,
-      weight: isSelected ? 3 : 1.5,
+      weight: isSelected ? 3 : 2,
       opacity: 1,
-      color: isSelected ? '#1d4ed8' : '#334155',
-      fillOpacity: isSelected ? 0.6 : 0.35,
+      color: isSelected ? '#1d4ed8' : '#ffffff',
+      fillOpacity: isSelected ? 0.65 : 0.45,
     };
   };
 
@@ -95,14 +82,6 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
     const name = feature.properties.name_fr || feature.properties.NAME_1 || 'Gouvernorat';
     layer.bindTooltip(`<b>Gouvernorat : ${name}</b>`, { sticky: true });
     layer.on({
-      mouseover: (e) => {
-        const l = e.target;
-        l.setStyle({ weight: 3, color: '#0f172a', fillOpacity: 0.6 });
-      },
-      mouseout: (e) => {
-        const l = e.target;
-        l.setStyle(geoStyle(feature));
-      },
       click: (e) => {
         if (onSelectLocation) onSelectLocation(e.latlng);
       }
@@ -112,16 +91,16 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
   return (
     <MapContainer center={[35.8, 10.0]} zoom={7} style={{ height: '100%', width: '100%' }}>
       <TileLayer
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        attribution="&copy; OpenStreetMap contributors"
+        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+        attribution="&copy; OpenStreetMap & CartoDB"
       />
       
-      <MapUpdater center={mapCenter} zoom={selectedGouv === 'Tous' ? 7 : 11} />
+      <MapUpdater center={mapCenter} zoom={selectedGouv === 'Tous' ? 7 : 10} />
       <LocationSelector onSelect={onSelectLocation} />
 
       {geoData && (
         <GeoJSON 
-          key={selectedGouv} 
+          key={selectedGouv + JSON.stringify(geoData)} 
           data={geoData} 
           style={geoStyle} 
           onEachFeature={onEachGouv} 
