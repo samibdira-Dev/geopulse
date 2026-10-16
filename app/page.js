@@ -13,11 +13,26 @@ const GOUV_COORDS = {
   'Ariana': [36.8625, 10.1932],
   'Ben Arous': [36.7435, 10.2319],
   'Manouba': [36.8081, 10.0972],
+  'Nabeul': [36.4513, 10.7357],
+  'Zaghouan': [36.4029, 10.1429],
+  'Bizerte': [37.2744, 9.8739],
+  'Béja': [36.7256, 9.1817],
+  'Jendouba': [36.5011, 8.7803],
+  'Le Kef': [36.1742, 8.7047],
+  'Siliana': [36.0850, 9.3708],
   'Sousse': [35.8256, 10.6084],
   'Monastir': [35.7780, 10.8262],
+  'Mahdia': [35.5047, 11.0622],
   'Sfax': [34.7406, 10.7603],
-  'Nabeul': [36.4513, 10.7357],
-  'Bizerte': [37.2744, 9.8739]
+  'Kairouan': [35.6781, 10.0963],
+  'Kasserine': [35.1675, 8.8367],
+  'Sidi Bouzid': [35.0382, 9.4859],
+  'Gabès': [33.8815, 10.0982],
+  'Medenine': [33.8753, 10.8583],
+  'Tataouine': [32.9297, 10.4518],
+  'Gafsa': [34.4250, 8.7842],
+  'Tozeur': [33.9197, 8.1335],
+  'Kébili': [33.7044, 8.9690]
 };
 
 export default function Home() {
@@ -64,7 +79,6 @@ export default function Home() {
     loadAllData();
   }, []);
 
-  // Détection automatique Gouvernorat + Ville + Quartier au clic sur la carte
   const handleMapClick = async (latlng) => {
     setIsDetecting(true);
     let detectedGouv = 'Tunis';
@@ -77,7 +91,6 @@ export default function Home() {
       
       if (data && data.address) {
         const addr = data.address;
-        // Extraction du quartier, banlieue ou ville
         const suburb = addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || '';
         const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
         const state = (addr.state || '').replace('Gouvernorat de ', '').replace('Gouvernorat ', '');
@@ -98,7 +111,6 @@ export default function Home() {
       adresse: fullAddress
     });
 
-    // Pré-remplit automatiquement le formulaire pour l'équipe !
     setNewPdv(prev => ({
       ...prev,
       gouvernorat: detectedGouv,
@@ -160,15 +172,14 @@ export default function Home() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Sélecteur rapide de Gouvernorat avec Zoom automatique */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1e293b', padding: '6px 12px', borderRadius: '6px', border: '1px solid #334155', fontSize: '13px' }}>
-            <span style={{ color: '#94a3b8' }}>🗺️ Cibler Gouvernorat :</span>
+            <span style={{ color: '#94a3b8' }}>🗺️ Gouvernorat :</span>
             <select 
               value={selectedGouv} 
               onChange={(e) => handleSelectGouv(e.target.value)}
               style={{ background: 'transparent', color: '#38bdf8', border: 'none', fontWeight: 'bold', cursor: 'pointer', outline: 'none' }}
             >
-              <option value="Tous" style={{ color: 'black' }}>Toute la Tunisie</option>
+              <option value="Tous" style={{ color: 'black' }}>Tous les 24 Gouvernorats</option>
               {Object.keys(GOUV_COORDS).map(g => (
                 <option key={g} value={g} style={{ color: 'black' }}>{g}</option>
               ))}
@@ -241,7 +252,6 @@ export default function Home() {
                         </div>
                       </div>
                       <div><b>Population (Zone 10 min) :</b> ~28,400 hab.</div>
-                      <div><b>Pouvoir d'achat quartier :</b> Moyen à Élevé</div>
                       <div><b>Indice de Cannibalisme :</b> <span style={{ color: '#16a34a', fontWeight: 'bold' }}>Faible (8%)</span></div>
                     </div>
                     <button 
@@ -319,7 +329,7 @@ export default function Home() {
             {activeTab === 'demographie' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
-                  <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>👥 Démographie par Gouvernorat</h3>
+                  <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>👥 Démographie des 24 Gouvernorats</h3>
                   <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>
                     Sélectionnez un gouvernorat pour zoomer sur ses limites et filtrer ses statistiques.
                   </p>
