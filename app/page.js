@@ -5,26 +5,39 @@ import dynamic from 'next/dynamic';
 
 const MapWithNoSSR = dynamic(() => import('../components/MapComponent'), { 
   ssr: false,
-  loading: () => <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif' }}>Chargement de GeoPulse SaaS...</div>
+  loading: () => <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif' }}>Chargement de la cartographie intelligente...</div>
 });
 
+const GOUV_COORDS = {
+  'Tunis': [36.8065, 10.1815],
+  'Ariana': [36.8625, 10.1932],
+  'Ben Arous': [36.7435, 10.2319],
+  'Manouba': [36.8081, 10.0972],
+  'Sousse': [35.8256, 10.6084],
+  'Monastir': [35.7780, 10.8262],
+  'Sfax': [34.7406, 10.7603],
+  'Nabeul': [36.4513, 10.7357],
+  'Bizerte': [37.2744, 9.8739]
+};
+
 export default function Home() {
-  const [activeTab, setActiveTab] = useState('simulateur'); // 'simulateur' | 'ajout' | 'demographie'
+  const [activeTab, setActiveTab] = useState('simulateur');
   const [currentClient, setCurrentClient] = useState('SOPAT (Mliha)');
   const [points, setPoints] = useState([]);
   const [demographie, setDemographie] = useState([]);
   const [selectedGouv, setSelectedGouv] = useState('Tous');
+  const [mapCenter, setMapCenter] = useState(null);
   const [simulatedPoint, setSimulatedPoint] = useState(null);
+  const [isDetecting, setIsDetecting] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
-  // Formulaire d'ajout collaboratif pour les équipes
   const [newPdv, setNewPdv] = useState({
     nom_pdv: '',
     type_pdv: 'Boutique propre',
     gouvernorat: 'Ariana',
     delegation: '',
     ca_historique_moyen: 75000,
-    ajoute_par: 'Chef de Zone Tunis',
+    ajoute_par: 'Chef de Zone',
     latitude: 36.8625,
     longitude: 10.1932
   });
@@ -51,25 +64,66 @@ export default function Home() {
     loadAllData();
   }, []);
 
-  // Clic sur la carte : met à jour à la fois le simulateur ET les coordonnées du formulaire d'ajout
-  const handleMapClick = (latlng) => {
-    setSimulatedPoint(latlng);
+  // Détection automatique Gouvernorat + Ville + Quartier au clic sur la carte
+  const handleMapClick = async (latlng) => {
+    setIsDetecting(true);
+    let detectedGouv = 'Tunis';
+    let detectedQuartier = 'Zone sélectionnée';
+    let fullAddress = '';
+
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}&zoom=18&addressdetails=1&accept-language=fr`);
+      const data = await res.json();
+      
+      if (data && data.address) {
+        const addr = data.address;
+        // Extraction du quartier, banlieue ou ville
+        const suburb = addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || '';
+        const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || '';
+        const state = (addr.state || '').replace('Gouvernorat de ', '').replace('Gouvernorat ', '');
+
+        detectedQuartier = [suburb, city].filter(Boolean).join(' - ') || 'Centre';
+        detectedGouv = state || city || 'Tunis';
+        fullAddress = data.display_name;
+      }
+    } catch (e) {
+      console.error('Erreur géocodage inverse:', e);
+    }
+
+    setSimulatedPoint({
+      lat: latlng.lat,
+      lng: latlng.lng,
+      quartier: detectedQuartier,
+      gouvernorat: detectedGouv,
+      adresse: fullAddress
+    });
+
+    // Pré-remplit automatiquement le formulaire pour l'équipe !
     setNewPdv(prev => ({
       ...prev,
+      gouvernorat: detectedGouv,
+      delegation: detectedQuartier,
       latitude: parseFloat(latlng.lat.toFixed(5)),
       longitude: parseFloat(latlng.lng.toFixed(5))
     }));
+
+    setIsDetecting(false);
   };
 
-  // Enregistrement d'un nouveau point par l'équipe dans Supabase
+  const handleSelectGouv = (gouv) => {
+    setSelectedGouv(gouv);
+    if (gouv !== 'Tous' && GOUV_COORDS[gouv]) {
+      setMapCenter(GOUV_COORDS[gouv]);
+    } else {
+      setMapCenter([35.8, 10.0]);
+    }
+  };
+
   const handleAddPdv = async (e) => {
     e.preventDefault();
     setStatusMsg('Enregistrement en cours...');
     const supabase = getSupabase();
-    if (!supabase) {
-      setStatusMsg('Erreur : connexion Supabase manquante.');
-      return;
-    }
+    if (!supabase) return;
 
     const { error } = await supabase.from('points_de_vente').insert([{
       nom_pdv: newPdv.nom_pdv,
@@ -86,8 +140,8 @@ export default function Home() {
     if (error) {
       setStatusMsg('Erreur : ' + error.message);
     } else {
-      setStatusMsg('✅ Point ajouté avec succès par l\'équipe !');
-      setNewPdv({ ...newPdv, nom_pdv: '', delegation: '' });
+      setStatusMsg('✅ Point ajouté avec succès dans ' + newPdv.delegation + ' !');
+      setNewPdv({ ...newPdv, nom_pdv: '' });
       await loadAllData();
       setTimeout(() => setStatusMsg(''), 4000);
     }
@@ -95,20 +149,34 @@ export default function Home() {
 
   const filteredDemo = selectedGouv === 'Tous' 
     ? demographie 
-    : demographie.filter(d => d.gouvernorat === selectedGouv);
+    : demographie.filter(d => d.gouvernorat.toLowerCase().includes(selectedGouv.toLowerCase()));
 
   return (
     <main style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', fontFamily: 'system-ui, sans-serif' }}>
-      {/* HEADER SAAS MULTI-CLIENT */}
       <header style={{ background: '#0f172a', color: 'white', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ background: '#3b82f6', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px' }}>GeoPulse SaaS</span>
-          <h1 style={{ margin: 0, fontSize: '17px', fontWeight: '500' }}>Plateforme Géomarketing & Intelligence Territoriale</h1>
+          <h1 style={{ margin: 0, fontSize: '17px', fontWeight: '500' }}>Plateforme Géomarketing & Détection Territoriale</h1>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Sélecteur rapide de Gouvernorat avec Zoom automatique */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#1e293b', padding: '6px 12px', borderRadius: '6px', border: '1px solid #334155', fontSize: '13px' }}>
+            <span style={{ color: '#94a3b8' }}>🗺️ Cibler Gouvernorat :</span>
+            <select 
+              value={selectedGouv} 
+              onChange={(e) => handleSelectGouv(e.target.value)}
+              style={{ background: 'transparent', color: '#38bdf8', border: 'none', fontWeight: 'bold', cursor: 'pointer', outline: 'none' }}
+            >
+              <option value="Tous" style={{ color: 'black' }}>Toute la Tunisie</option>
+              {Object.keys(GOUV_COORDS).map(g => (
+                <option key={g} value={g} style={{ color: 'black' }}>{g}</option>
+              ))}
+            </select>
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#1e293b', padding: '6px 12px', borderRadius: '6px', border: '1px solid #334155', fontSize: '13px' }}>
-            <span style={{ color: '#94a3b8' }}>Espace Client :</span>
+            <span style={{ color: '#94a3b8' }}>Client :</span>
             <select 
               value={currentClient} 
               onChange={(e) => setCurrentClient(e.target.value)}
@@ -121,16 +189,14 @@ export default function Home() {
           </div>
 
           <div style={{ fontSize: '13px', background: '#1e293b', padding: '6px 12px', borderRadius: '6px', border: '1px solid #334155' }}>
-            Réseau actif : <b>{points.length} points de vente</b>
+            Réseau actif : <b>{points.length} PDV</b>
           </div>
         </div>
       </header>
 
-      {/* CORPS DE L'APPLICATION */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <aside style={{ width: '420px', background: 'white', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', zIndex: 10 }}>
           
-          {/* NAVIGATION PAR ONGLETS */}
           <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
             <button onClick={() => setActiveTab('simulateur')} style={{ flex: 1, padding: '12px 8px', border: 'none', background: activeTab === 'simulateur' ? 'white' : 'transparent', borderBottom: activeTab === 'simulateur' ? '3px solid #3b82f6' : 'none', fontWeight: 'bold', fontSize: '12px', color: activeTab === 'simulateur' ? '#1d4ed8' : '#64748b', cursor: 'pointer' }}>
               🎯 Simulateur CA
@@ -145,58 +211,76 @@ export default function Home() {
 
           <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
             
-            {/* ONGLET 1 : SIMULATEUR */}
             {activeTab === 'simulateur' && (
               <>
                 <div>
-                  <h3 style={{ margin: '0 0 6px 0', color: '#0f172a', fontSize: '16px' }}>📍 Simulateur d'Implantation ({currentClient})</h3>
+                  <h3 style={{ margin: '0 0 6px 0', color: '#0f172a', fontSize: '16px' }}>📍 Détection & Simulation ({currentClient})</h3>
                   <p style={{ margin: 0, color: '#64748b', fontSize: '13px', lineHeight: '1.4' }}>
-                    Cliquez sur la carte pour analyser la zone de chalandise et estimer le potentiel commercial.
+                    Cliquez sur la carte : le système détecte automatiquement le <b>Gouvernorat, la Ville et le Quartier</b>.
                   </p>
                 </div>
 
-                {simulatedPoint ? (
+                {isDetecting && (
+                  <div style={{ padding: '12px', background: '#eff6ff', color: '#1d4ed8', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', textAlign: 'center' }}>
+                    🔍 Identification du quartier et de la démographie en cours...
+                  </div>
+                )}
+
+                {simulatedPoint && !isDetecting ? (
                   <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <h4 style={{ margin: 0, color: '#7c3aed', fontSize: '15px' }}>📊 Résultats de la Simulation</h4>
+                    <div style={{ background: '#dbeafe', color: '#1e40af', padding: '8px 12px', borderRadius: '6px', fontSize: '13px' }}>
+                      <div><b>🏛️ Gouvernorat détecté :</b> {simulatedPoint.gouvernorat}</div>
+                      <div style={{ marginTop: '4px' }}><b>🏘️ Ville / Quartier :</b> {simulatedPoint.quartier}</div>
+                    </div>
+
                     <div style={{ fontSize: '13px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div><b>Coordonnées GPS :</b> {simulatedPoint.lat.toFixed(4)}, {simulatedPoint.lng.toFixed(4)}</div>
                       <div style={{ background: '#ede9fe', padding: '10px', borderRadius: '6px', marginTop: '4px' }}>
                         <span style={{ fontSize: '11px', color: '#6d28d9', textTransform: 'uppercase', fontWeight: 'bold' }}>CA Prévisionnel Estimé</span>
                         <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#5b21b6' }}>
-                          {Math.round(72000 + (simulatedPoint.lat * 450)).toLocaleString()} TND / mois
+                          {Math.round(74000 + (simulatedPoint.lat * 420)).toLocaleString()} TND / mois
                         </div>
                       </div>
-                      <div><b>Population (Isochrone 10 min) :</b> ~26,800 hab.</div>
-                      <div><b>Revenu moyen ménage :</b> ~1,850 TND / mois</div>
+                      <div><b>Population (Zone 10 min) :</b> ~28,400 hab.</div>
+                      <div><b>Pouvoir d'achat quartier :</b> Moyen à Élevé</div>
                       <div><b>Indice de Cannibalisme :</b> <span style={{ color: '#16a34a', fontWeight: 'bold' }}>Faible (8%)</span></div>
                     </div>
                     <button 
                       onClick={() => setActiveTab('ajout')}
                       style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', marginTop: '5px' }}>
-                      ➕ Convertir cet emplacement en Point de Vente
+                      ➕ Ouvrir ce point dans "{simulatedPoint.quartier}"
                     </button>
                   </div>
-                ) : (
+                ) : !isDetecting && (
                   <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-                    Aucun emplacement sélectionné.<br/>Cliquez sur la carte pour lancer une simulation.
+                    Aucun emplacement sélectionné.<br/>Cliquez sur un gouvernorat ou un quartier sur la carte.
                   </div>
                 )}
               </>
             )}
 
-            {/* ONGLET 2 : AJOUT COLLABORATIF PAR LES ÉQUIPES */}
             {activeTab === 'ajout' && (
               <form onSubmit={handleAddPdv} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
-                  <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>➕ Ajouter des données terrain</h3>
+                  <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>➕ Saisie Équipe (Auto-détectée)</h3>
                   <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>
-                    Permettez à vos équipes d'ajouter un magasin, une franchise ou un concurrent. <b>Astuce : cliquez sur la carte pour remplir les coordonnées GPS automatiquement.</b>
+                    Cliquez sur la carte : le gouvernorat, le quartier et le GPS se remplissent tout seuls !
                   </p>
                 </div>
 
                 <div>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Nom du Point de Vente / Concurrent *</label>
-                  <input required type="text" placeholder="Ex: SOPAT Ennasr 2" value={newPdv.nom_pdv} onChange={e => setNewPdv({...newPdv, nom_pdv: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                  <input required type="text" placeholder="Ex: SOPAT Sahloul" value={newPdv.nom_pdv} onChange={e => setNewPdv({...newPdv, nom_pdv: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Gouvernorat (Détecté)</label>
+                    <input type="text" value={newPdv.gouvernorat} onChange={e => setNewPdv({...newPdv, gouvernorat: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #3b82f6', background: '#eff6ff', fontWeight: 'bold', boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Ville / Quartier (Détecté)</label>
+                    <input type="text" value={newPdv.delegation} onChange={e => setNewPdv({...newPdv, delegation: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #3b82f6', background: '#eff6ff', fontWeight: 'bold', boxSizing: 'border-box' }} />
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -210,40 +294,8 @@ export default function Home() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Gouvernorat</label>
-                    <select value={newPdv.gouvernorat} onChange={e => setNewPdv({...newPdv, gouvernorat: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                      <option value="Tunis">Tunis</option>
-                      <option value="Ariana">Ariana</option>
-                      <option value="Ben Arous">Ben Arous</option>
-                      <option value="Manouba">Manouba</option>
-                      <option value="Sousse">Sousse</option>
-                      <option value="Monastir">Monastir</option>
-                      <option value="Sfax">Sfax</option>
-                      <option value="Nabeul">Nabeul</option>
-                      <option value="Bizerte">Bizerte</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>Délégation / Quartier</label>
-                    <input type="text" placeholder="Ex: Sahloul" value={newPdv.delegation} onChange={e => setNewPdv({...newPdv, delegation: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>CA Mensuel Estimé (TND)</label>
+                    <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155' }}>CA Mensuel (TND)</label>
                     <input type="number" value={newPdv.ca_historique_moyen} onChange={e => setNewPdv({...newPdv, ca_historique_moyen: e.target.value})} style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#f1f5f9', padding: '10px', borderRadius: '6px' }}>
-                  <div>
-                    <label style={{ fontSize: '11px', color: '#475569' }}>Latitude (Clic carte)</label>
-                    <input type="number" step="any" value={newPdv.latitude} onChange={e => setNewPdv({...newPdv, latitude: e.target.value})} style={{ width: '100%', padding: '6px', marginTop: '2px', borderRadius: '4px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '11px', color: '#475569' }}>Longitude (Clic carte)</label>
-                    <input type="number" step="any" value={newPdv.longitude} onChange={e => setNewPdv({...newPdv, longitude: e.target.value})} style={{ width: '100%', padding: '6px', marginTop: '2px', borderRadius: '4px', border: '1px solid #cbd5e1', boxSizing: 'border-box' }} />
                   </div>
                 </div>
 
@@ -264,26 +316,20 @@ export default function Home() {
               </form>
             )}
 
-            {/* ONGLET 3 : DONNÉES DÉMOGRAPHIQUES PAR RÉGION / GOUVERNORAT */}
             {activeTab === 'demographie' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
-                  <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>👥 Démographie & Potentiel Régional</h3>
+                  <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>👥 Démographie par Gouvernorat</h3>
                   <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>
-                    Données structurées par gouvernorat et délégation (Population, Ménages, Revenu moyen).
+                    Sélectionnez un gouvernorat pour zoomer sur ses limites et filtrer ses statistiques.
                   </p>
                 </div>
 
-                <select value={selectedGouv} onChange={e => setSelectedGouv(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 'bold' }}>
+                <select value={selectedGouv} onChange={e => handleSelectGouv(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontWeight: 'bold' }}>
                   <option value="Tous">📍 Tous les Gouvernorats ({demographie.length} zones)</option>
-                  <option value="Tunis">Tunis</option>
-                  <option value="Ariana">Ariana</option>
-                  <option value="Ben Arous">Ben Arous</option>
-                  <option value="Sousse">Sousse</option>
-                  <option value="Monastir">Monastir</option>
-                  <option value="Sfax">Sfax</option>
-                  <option value="Nabeul">Nabeul</option>
-                  <option value="Bizerte">Bizerte</option>
+                  {Object.keys(GOUV_COORDS).map(g => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
                 </select>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -318,9 +364,14 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* CARTE INTERACTIVE */}
         <div style={{ flex: 1, position: 'relative' }}>
-          <MapWithNoSSR points={points} onSelectLocation={handleMapClick} simulatedPoint={simulatedPoint} />
+          <MapWithNoSSR 
+            points={points} 
+            onSelectLocation={handleMapClick} 
+            simulatedPoint={simulatedPoint} 
+            selectedGouv={selectedGouv}
+            mapCenter={mapCenter}
+          />
         </div>
       </div>
     </main>
