@@ -1,6 +1,6 @@
 'use client';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMapEvents, useMap } from 'react-leaflet';
-import { useCallback, useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Polygon, useMapEvents, useMap } from 'react-leaflet';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { GOUV_COLORS, normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
@@ -22,13 +22,65 @@ const simIcon = new L.Icon({
   popupAnchor: [1, -34],
 });
 
-function MapUpdater({ center, zoom }) {
+// Emprise de la Tunisie (sud-ouest, nord-est) : la vue ne peut pas en sortir.
+const TUNISIA_BOUNDS = [[30.0, 7.3], [37.7, 11.9]];
+
+// Cadre la carte sur la Tunisie et empêche de dézoomer au-delà du pays.
+function TunisiaViewport() {
   const map = useMap();
   useEffect(() => {
-    if (center) {
+    const applyMinZoom = () => {
+      map.setMinZoom(map.getBoundsZoom(TUNISIA_BOUNDS, false));
+    };
+    applyMinZoom();
+    map.fitBounds(TUNISIA_BOUNDS);
+    map.on('resize', applyMinZoom);
+    return () => {
+      map.off('resize', applyMinZoom);
+    };
+  }, [map]);
+  return null;
+}
+
+// Voile opaque sur tout ce qui est hors de la Tunisie (pays voisins et mer) :
+// un grand rectangle « monde » percé des contours de chaque gouvernorat.
+const WORLD_RING = [[-85, -179.9], [-85, 179.9], [85, 179.9], [85, -179.9]];
+
+function MaskOutsideTunisia({ geoData }) {
+  const positions = useMemo(() => {
+    const holes = [];
+    ((geoData && geoData.features) || []).forEach((feature) => {
+      const g = feature.geometry;
+      if (!g) return;
+      const polygons =
+        g.type === 'Polygon' ? [g.coordinates] :
+        g.type === 'MultiPolygon' ? g.coordinates : [];
+      polygons.forEach((poly) => {
+        // Anneau extérieur uniquement, converti de [lng, lat] en [lat, lng].
+        if (poly[0]) holes.push(poly[0].map(([lng, lat]) => [lat, lng]));
+      });
+    });
+    return [WORLD_RING, ...holes];
+  }, [geoData]);
+
+  return (
+    <Polygon
+      positions={positions}
+      pathOptions={{ stroke: false, fillColor: '#f8fafc', fillOpacity: 1, interactive: false }}
+    />
+  );
+}
+
+function MapUpdater({ center, zoom, resetToCountry }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!center) return;
+    if (resetToCountry) {
+      map.flyToBounds(TUNISIA_BOUNDS, { duration: 1.2 });
+    } else {
       map.flyTo(center, zoom || 11, { duration: 1.2 });
     }
-  }, [center, zoom, map]);
+  }, [center, zoom, resetToCountry, map]);
   return null;
 }
 
@@ -78,7 +130,7 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
       weight: isSelected ? 3 : 2,
       opacity: 1,
       color: '#ffffff',
-      fillOpacity: isSelected ? 0.75 : 0.5,
+      fillOpacity: isSelected ? 0.4 : 0.15,
     };
   }, [selectedGouv]);
 
@@ -96,17 +148,27 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
   };
 
   return (
-    <MapContainer center={[34.0, 9.0]} zoom={6} style={{ height: '100%', width: '100%' }}>
+    <MapContainer
+      center={[34.0, 9.5]}
+      zoom={6}
+      zoomSnap={0.25}
+      maxBounds={TUNISIA_BOUNDS}
+      maxBoundsViscosity={1.0}
+      style={{ height: '100%', width: '100%' }}
+    >
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution="&copy; OpenStreetMap contributors"
       />
       
-      <MapUpdater center={mapCenter} zoom={selectedGouv === 'Tous' ? 6 : 9} />
+      <TunisiaViewport />
+      <MapUpdater center={mapCenter} zoom={9} resetToCountry={selectedGouv === 'Tous'} />
       <LocationSelector onSelect={onSelectLocation} />
 
+      {geoData && <MaskOutsideTunisia geoData={geoData} />}
+
       {geoData && (
-        <GeoJSON 
+        <GeoJSON
           key={selectedGouv}
           data={geoData} 
           style={geoStyle} 
