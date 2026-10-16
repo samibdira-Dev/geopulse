@@ -1,5 +1,6 @@
 'use client';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMapEvents, useMap } from 'react-leaflet';
+import { useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -20,6 +21,17 @@ const simIcon = new L.Icon({
   popupAnchor: [1, -34],
 });
 
+// Composant pour centrer la carte quand on choisit un gouvernorat dans la liste
+function MapUpdater({ center, zoom }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.flyTo(center, zoom || 11, { duration: 1.2 });
+    }
+  }, [center, zoom, map]);
+  return null;
+}
+
 function LocationSelector({ onSelect }) {
   useMapEvents({
     click(e) {
@@ -29,31 +41,80 @@ function LocationSelector({ onSelect }) {
   return null;
 }
 
-export default function MapComponent({ points = [], onSelectLocation, simulatedPoint }) {
+export default function MapComponent({ points = [], onSelectLocation, simulatedPoint, selectedGouv, mapCenter }) {
+  const [geoData, setGeoData] = useState(null);
+
+  // Chargement automatique des frontières des 24 gouvernorats de Tunisie
+  useEffect(() => {
+    fetch('https://raw.githubusercontent.com/riatelab/tunisie/master/data/tn-gouvernorats.geojson')
+      .then((res) => res.json())
+      .then((data) => setGeoData(data))
+      .catch((err) => console.error('Erreur chargement limites gouvernorats:', err));
+  }, []);
+
   const getCoords = (p, idx) => {
-    // 1. Utilise les coordonnées GPS exactes si elles ont été saisies par l'équipe
     if (p.latitude && p.longitude) return [Number(p.latitude), Number(p.longitude)];
-    
-    // 2. Sinon, positionne par gouvernorat pour les anciens points
     if (p.gouvernorat === 'Ariana') return [36.8625, 10.1932];
     if (p.gouvernorat === 'Sousse') return [35.8361, 10.5920];
     if (p.gouvernorat === 'Ben Arous') return [36.7230, 10.2280];
     if (p.gouvernorat === 'Monastir') return [35.7780, 10.8262];
     if (p.gouvernorat === 'Sfax') return [34.7406, 10.7603];
-    if (p.gouvernorat === 'Nabeul') return [36.4513, 10.7357];
-    if (p.gouvernorat === 'Bizerte') return [37.2744, 9.8739];
-    
     return [36.8065 + (idx * 0.015), 10.1815 + (idx * 0.015)];
   };
 
+  // Style des frontières des gouvernorats
+  const geoStyle = (feature) => {
+    const name = feature.properties.name_fr || feature.properties.NAME_1 || '';
+    const isSelected = selectedGouv && selectedGouv !== 'Tous' && name.toLowerCase().includes(selectedGouv.toLowerCase());
+    return {
+      fillColor: isSelected ? '#3b82f6' : '#64748b',
+      weight: isSelected ? 3 : 1.5,
+      opacity: 1,
+      color: isSelected ? '#1d4ed8' : '#475569',
+      dashArray: isSelected ? '' : '4',
+      fillOpacity: isSelected ? 0.25 : 0.05,
+    };
+  };
+
+  const onEachGouv = (feature, layer) => {
+    const name = feature.properties.name_fr || feature.properties.NAME_1 || 'Gouvernorat';
+    layer.bindTooltip(`Gouvernorat : ${name}`, { sticky: true });
+    layer.on({
+      mouseover: (e) => {
+        const l = e.target;
+        l.setStyle({ weight: 3, color: '#2563eb', fillOpacity: 0.2 });
+      },
+      mouseout: (e) => {
+        const l = e.target;
+        l.setStyle(geoStyle(feature));
+      },
+      click: (e) => {
+        if (onSelectLocation) onSelectLocation(e.latlng);
+      }
+    });
+  };
+
   return (
-    <MapContainer center={[36.0, 10.2]} zoom={7} style={{ height: '100%', width: '100%' }}>
+    <MapContainer center={[35.8, 10.0]} zoom={7} style={{ height: '100%', width: '100%' }}>
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution="&copy; OpenStreetMap contributors"
       />
-      <LocationSelector onSelect={onSelectLocation} />
       
+      <MapUpdater center={mapCenter} zoom={selectedGouv === 'Tous' ? 7 : 11} />
+      <LocationSelector onSelect={onSelectLocation} />
+
+      {/* Affichage des limites des Gouvernorats */}
+      {geoData && (
+        <GeoJSON 
+          key={selectedGouv} 
+          data={geoData} 
+          style={geoStyle} 
+          onEachFeature={onEachGouv} 
+        />
+      )}
+      
+      {/* Affichage des Points de Vente */}
       {points.map((p, idx) => (
         <Marker key={p.id_pdv || idx} position={getCoords(p, idx)} icon={customIcon}>
           <Popup>
@@ -69,11 +130,16 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
         </Marker>
       ))}
 
+      {/* Marqueur de simulation / clic */}
       {simulatedPoint && (
         <Marker position={[simulatedPoint.lat, simulatedPoint.lng]} icon={simIcon}>
           <Popup>
-            <b>Nouvelle implantation simulée</b><br />
-            Lat: {simulatedPoint.lat.toFixed(4)}, Lng: {simulatedPoint.lng.toFixed(4)}
+            <b>Emplacement détecté</b><br />
+            {simulatedPoint.quartier && <span><b>Quartier/Ville :</b> {simulatedPoint.quartier}<br /></span>}
+            {simulatedPoint.gouvernorat && <span><b>Gouvernorat :</b> {simulatedPoint.gouvernorat}<br /></span>}
+            <span style={{ fontSize: '11px', color: '#64748b' }}>
+              GPS: {simulatedPoint.lat.toFixed(4)}, {simulatedPoint.lng.toFixed(4)}
+            </span>
           </Popup>
         </Marker>
       )}
