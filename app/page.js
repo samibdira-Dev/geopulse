@@ -3,10 +3,6 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import dynamic from 'next/dynamic';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
 const MapWithNoSSR = dynamic(() => import('../components/MapComponent'), { 
   ssr: false,
   loading: () => <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Chargement de la carte GeoPulse...</div>
@@ -15,15 +11,26 @@ const MapWithNoSSR = dynamic(() => import('../components/MapComponent'), {
 export default function Home() {
   const [points, setPoints] = useState([]);
   const [simulatedPoint, setSimulatedPoint] = useState(null);
-  const [stats, setStats] = useState({ totalCa: 247000, avgCa: 82333 });
 
   useEffect(() => {
     async function fetchData() {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseAnonKey) {
+        setPoints([
+          { id_pdv: 1, nom_pdv: 'SOPAT Ariana Centre', type_pdv: 'Boutique propre', gouvernorat: 'Ariana', ca_historique_moyen: 85000 },
+          { id_pdv: 2, nom_pdv: 'SOPAT Sousse Sahloul', type_pdv: 'Boutique propre', gouvernorat: 'Sousse', ca_historique_moyen: 94000 },
+          { id_pdv: 3, nom_pdv: 'SOPAT Mourouj 5', type_pdv: 'Partenaire / Franchise', gouvernorat: 'Ben Arous', ca_historique_moyen: 68000 }
+        ]);
+        return;
+      }
+
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
       const { data, error } = await supabase.from('points_de_vente').select('*');
       if (!error && data && data.length > 0) {
         setPoints(data);
       } else {
-        // Fallback de test si la base est vide
         setPoints([
           { id_pdv: 1, nom_pdv: 'SOPAT Ariana Centre', type_pdv: 'Boutique propre', gouvernorat: 'Ariana', ca_historique_moyen: 85000 },
           { id_pdv: 2, nom_pdv: 'SOPAT Sousse Sahloul', type_pdv: 'Boutique propre', gouvernorat: 'Sousse', ca_historique_moyen: 94000 },
@@ -40,7 +47,6 @@ export default function Home() {
 
   return (
     <main style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw' }}>
-      {/* Top Header */}
       <header style={{ background: '#0f172a', color: 'white', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ background: '#3b82f6', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '14px' }}>GeoPulse</span>
@@ -51,9 +57,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Main Content Layout */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar Panneau de Contrôle / Simulation */}
         <aside style={{ width: '380px', background: 'white', borderRight: '1px solid #e2e8f0', padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', zIndex: 10, overflowY: 'auto' }}>
           <div>
             <h3 style={{ margin: '0 0 8px 0', color: '#0f172a', fontSize: '16px' }}>📍 Simulateur d'Implantation</h3>
@@ -102,7 +106,6 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* Map Container */}
         <div style={{ flex: 1, position: 'relative' }}>
           <MapWithNoSSR points={points} onSelectLocation={handleMapClick} simulatedPoint={simulatedPoint} />
         </div>
