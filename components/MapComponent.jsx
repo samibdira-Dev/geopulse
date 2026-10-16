@@ -21,7 +21,23 @@ const simIcon = new L.Icon({
   popupAnchor: [1, -34],
 });
 
-// Composant pour centrer la carte quand on choisit un gouvernorat dans la liste
+// Palette de couleurs distinctes pour les gouvernorats
+const GOUV_COLORS = [
+  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', 
+  '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16',
+  '#06b6d4', '#d946ef', '#eab308', '#22c55e', '#a855f7',
+  '#0ea5e9', '#f43f5e', '#34d399', '#fbbf24', '#c084fc',
+  '#38bdf8', '#fb7185', '#2dd4bf', '#facc15'
+];
+
+function getGovernorateColor(name) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return GOUV_COLORS[Math.abs(hash) % GOUV_COLORS.length];
+}
+
 function MapUpdater({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
@@ -44,7 +60,6 @@ function LocationSelector({ onSelect }) {
 export default function MapComponent({ points = [], onSelectLocation, simulatedPoint, selectedGouv, mapCenter }) {
   const [geoData, setGeoData] = useState(null);
 
-  // Chargement automatique des frontières des 24 gouvernorats de Tunisie
   useEffect(() => {
     fetch('https://raw.githubusercontent.com/riatelab/tunisie/master/data/tn-gouvernorats.geojson')
       .then((res) => res.json())
@@ -62,27 +77,27 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
     return [36.8065 + (idx * 0.015), 10.1815 + (idx * 0.015)];
   };
 
-  // Style des frontières des gouvernorats
   const geoStyle = (feature) => {
-    const name = feature.properties.name_fr || feature.properties.NAME_1 || '';
+    const name = feature.properties.name_fr || feature.properties.NAME_1 || 'Gouvernorat';
+    const color = getGovernorateColor(name);
     const isSelected = selectedGouv && selectedGouv !== 'Tous' && name.toLowerCase().includes(selectedGouv.toLowerCase());
+    
     return {
-      fillColor: isSelected ? '#3b82f6' : '#64748b',
+      fillColor: color,
       weight: isSelected ? 3 : 1.5,
       opacity: 1,
-      color: isSelected ? '#1d4ed8' : '#475569',
-      dashArray: isSelected ? '' : '4',
-      fillOpacity: isSelected ? 0.25 : 0.05,
+      color: isSelected ? '#1d4ed8' : '#334155',
+      fillOpacity: isSelected ? 0.6 : 0.35,
     };
   };
 
   const onEachGouv = (feature, layer) => {
     const name = feature.properties.name_fr || feature.properties.NAME_1 || 'Gouvernorat';
-    layer.bindTooltip(`Gouvernorat : ${name}`, { sticky: true });
+    layer.bindTooltip(`<b>Gouvernorat : ${name}</b>`, { sticky: true });
     layer.on({
       mouseover: (e) => {
         const l = e.target;
-        l.setStyle({ weight: 3, color: '#2563eb', fillOpacity: 0.2 });
+        l.setStyle({ weight: 3, color: '#0f172a', fillOpacity: 0.6 });
       },
       mouseout: (e) => {
         const l = e.target;
@@ -104,7 +119,6 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
       <MapUpdater center={mapCenter} zoom={selectedGouv === 'Tous' ? 7 : 11} />
       <LocationSelector onSelect={onSelectLocation} />
 
-      {/* Affichage des limites des Gouvernorats */}
       {geoData && (
         <GeoJSON 
           key={selectedGouv} 
@@ -114,7 +128,6 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
         />
       )}
       
-      {/* Affichage des Points de Vente */}
       {points.map((p, idx) => (
         <Marker key={p.id_pdv || idx} position={getCoords(p, idx)} icon={customIcon}>
           <Popup>
@@ -130,12 +143,11 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
         </Marker>
       ))}
 
-      {/* Marqueur de simulation / clic */}
       {simulatedPoint && (
         <Marker position={[simulatedPoint.lat, simulatedPoint.lng]} icon={simIcon}>
           <Popup>
             <b>Emplacement détecté</b><br />
-            {simulatedPoint.quartier && <span><b>Quartier/Ville :</b> {simulatedPoint.quartier}<br /></span>}
+            {simulatedPoint.quartier && <span><b>Quartier :</b> {simulatedPoint.quartier}<br /></span>}
             {simulatedPoint.gouvernorat && <span><b>Gouvernorat :</b> {simulatedPoint.gouvernorat}<br /></span>}
             <span style={{ fontSize: '11px', color: '#64748b' }}>
               GPS: {simulatedPoint.lat.toFixed(4)}, {simulatedPoint.lng.toFixed(4)}
