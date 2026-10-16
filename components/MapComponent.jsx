@@ -56,7 +56,7 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
     fetch('https://raw.githubusercontent.com/riatelab/tunisie/master/data/tn-gouvernorats.geojson')
       .then((res) => res.json())
       .then((data) => setGeoData(data))
-      .catch((err) => console.error('Erreur chargement GeoJSON:', err));
+      .catch((err) => console.error('Erreur GeoJSON:', err));
   }, []);
 
   const getCoords = (p, idx) => {
@@ -64,8 +64,13 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
     return [36.8065 + (idx * 0.015), 10.1815 + (idx * 0.015)];
   };
 
+  const getGouvName = (feature) => {
+    const p = feature.properties;
+    return p.nom || p.name || p.name_fr || p.NAME_1 || p.governorat || 'Tunisie';
+  };
+
   const geoStyle = (feature) => {
-    const name = feature.properties.name_fr || feature.properties.NAME_1 || '';
+    const name = getGouvName(feature);
     const color = GOUV_COLORS[name] || '#3b82f6';
     const isSelected = selectedGouv && selectedGouv !== 'Tous' && name.toLowerCase().includes(selectedGouv.toLowerCase());
     
@@ -73,13 +78,13 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
       fillColor: color,
       weight: isSelected ? 3 : 2,
       opacity: 1,
-      color: isSelected ? '#1d4ed8' : '#ffffff',
-      fillOpacity: isSelected ? 0.6 : 0.35,
+      color: '#ffffff',
+      fillOpacity: isSelected ? 0.75 : 0.5,
     };
   };
 
   const onEachGouv = (feature, layer) => {
-    const name = feature.properties.name_fr || feature.properties.NAME_1 || 'Gouvernorat';
+    const name = getGouvName(feature);
     layer.bindTooltip(`<b>Gouvernorat : ${name}</b>`, { sticky: true });
     layer.on({
       click: (e) => {
@@ -89,13 +94,13 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
   };
 
   return (
-    <MapContainer center={[35.8, 10.0]} zoom={7} style={{ height: '100%', width: '100%' }}>
+    <MapContainer center={[34.0, 9.0]} zoom={6} style={{ height: '100%', width: '100%' }}>
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution="&copy; OpenStreetMap contributors"
       />
       
-      <MapUpdater center={mapCenter} zoom={selectedGouv === 'Tous' ? 7 : 10} />
+      <MapUpdater center={mapCenter} zoom={selectedGouv === 'Tous' ? 6 : 9} />
       <LocationSelector onSelect={onSelectLocation} />
 
       {geoData && (
@@ -116,7 +121,6 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
               <b>Type :</b> {p.type_pdv}<br />
               <b>Zone :</b> {p.gouvernorat} {p.delegation ? `(${p.delegation})` : ''}<br />
               <b>CA Moyen :</b> {Number(p.ca_historique_moyen).toLocaleString()} TND
-              {p.ajoute_par && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', borderTop: '1px solid #e2e8f0', paddingTop: '2px' }}>Ajouté par : {p.ajoute_par}</div>}
             </div>
           </Popup>
         </Marker>
@@ -128,9 +132,6 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
             <b>Emplacement détecté</b><br />
             {simulatedPoint.quartier && <span><b>Quartier :</b> {simulatedPoint.quartier}<br /></span>}
             {simulatedPoint.gouvernorat && <span><b>Gouvernorat :</b> {simulatedPoint.gouvernorat}<br /></span>}
-            <span style={{ fontSize: '11px', color: '#64748b' }}>
-              GPS: {simulatedPoint.lat.toFixed(4)}, {simulatedPoint.lng.toFixed(4)}
-            </span>
           </Popup>
         </Marker>
       )}
