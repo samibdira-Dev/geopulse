@@ -1,5 +1,5 @@
 'use client';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Polygon, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMapEvents, useMap } from 'react-leaflet';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -40,35 +40,6 @@ function TunisiaViewport() {
     };
   }, [map]);
   return null;
-}
-
-// Voile opaque sur tout ce qui est hors de la Tunisie (pays voisins et mer) :
-// un grand rectangle « monde » percé des contours de chaque gouvernorat.
-const WORLD_RING = [[-85, -179.9], [-85, 179.9], [85, 179.9], [85, -179.9]];
-
-function MaskOutsideTunisia({ geoData }) {
-  const positions = useMemo(() => {
-    const holes = [];
-    ((geoData && geoData.features) || []).forEach((feature) => {
-      const g = feature.geometry;
-      if (!g) return;
-      const polygons =
-        g.type === 'Polygon' ? [g.coordinates] :
-        g.type === 'MultiPolygon' ? g.coordinates : [];
-      polygons.forEach((poly) => {
-        // Anneau extérieur uniquement, converti de [lng, lat] en [lat, lng].
-        if (poly[0]) holes.push(poly[0].map(([lng, lat]) => [lat, lng]));
-      });
-    });
-    return [WORLD_RING, ...holes];
-  }, [geoData]);
-
-  return (
-    <Polygon
-      positions={positions}
-      pathOptions={{ stroke: false, fillColor: '#f8fafc', fillOpacity: 1, interactive: false }}
-    />
-  );
 }
 
 function MapUpdater({ center, zoom, resetToCountry }) {
@@ -421,8 +392,6 @@ export default function MapComponent({ points = [], onSelectLocation, simulatedP
         <TunisiaViewport />
         <MapUpdater center={mapCenter} zoom={9} resetToCountry={selectedGouv === 'Tous'} />
         <LocationSelector onSelect={onSelectLocation} />
-
-        {geoData && <MaskOutsideTunisia geoData={geoData} />}
 
         {geoData && (
           <GeoJSON
