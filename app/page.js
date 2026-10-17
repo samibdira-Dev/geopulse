@@ -9,6 +9,9 @@ const MapWithNoSSR = dynamic(() => import('../components/MapComponent'), {
   loading: () => <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontFamily: 'sans-serif' }}>Chargement de la cartographie intelligente...</div>
 });
 
+// Client de test : affiche la couche pharmacies (données OpenStreetMap) au lieu des PDV.
+const PHARMA_CLIENT = 'Pharmacies (test)';
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState('simulateur');
   const [currentClient, setCurrentClient] = useState('SOPAT (Mliha)');
@@ -109,6 +112,10 @@ export default function Home() {
 
   const handleAddPdv = async (e) => {
     e.preventDefault();
+    if (currentClient === PHARMA_CLIENT) {
+      setStatusMsg('Saisie de PDV désactivée pour ce client de test : modifiez les pharmacies directement sur la carte.');
+      return;
+    }
     setStatusMsg('Enregistrement en cours...');
     const supabase = getSupabase();
     if (!supabase) return;
@@ -175,11 +182,14 @@ export default function Home() {
               <option value="SOPAT (Mliha)" style={{ color: 'black' }}>SOPAT (Mliha)</option>
               <option value="Monoprix / GMS Tunisie" style={{ color: 'black' }}>Monoprix / GMS Tunisie</option>
               <option value="Réseau Franchise Café" style={{ color: 'black' }}>Réseau Franchise Café</option>
+              <option value={PHARMA_CLIENT} style={{ color: 'black' }}>Pharmacies (test)</option>
             </select>
           </div>
 
           <div style={{ fontSize: '13px', background: '#1e293b', padding: '6px 12px', borderRadius: '6px', border: '1px solid #334155' }}>
-            Réseau actif : <b>{points.length} PDV</b>
+            {currentClient === PHARMA_CLIENT
+              ? <>Couche : <b>Pharmacies (OSM)</b></>
+              : <>Réseau actif : <b>{points.length} PDV</b></>}
           </div>
         </div>
       </header>
@@ -355,8 +365,9 @@ export default function Home() {
 
         <div style={{ flex: 1, position: 'relative' }}>
           <MapWithNoSSR 
-            points={points} 
-            onSelectLocation={handleMapClick} 
+            points={currentClient === PHARMA_CLIENT ? [] : points}
+            layer={currentClient === PHARMA_CLIENT ? 'pharmacies' : 'pdv'}
+            onSelectLocation={handleMapClick}
             simulatedPoint={simulatedPoint} 
             selectedGouv={selectedGouv}
             mapCenter={mapCenter}
