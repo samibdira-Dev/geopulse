@@ -20,6 +20,8 @@ const ProMap = dynamic(() => import('../../components/ProMap'), {
 
 export default function ProPage() {
   const [session, setSession] = useState(undefined); // undefined = en cours de lecture
+  const [memberships, setMemberships] = useState([]);
+  const [choix, setChoix] = useState(null); // société choisie par l'utilisateur
   const [membership, setMembership] = useState(undefined); // undefined = chargement, null = aucune société
   const [societe, setSociete] = useState(null);
   const [types, setTypes] = useState([]);
@@ -58,13 +60,29 @@ export default function ProPage() {
     const { data, error } = await supabase
       .from('membres')
       .select('societe_id, role, nom_affiche, societes(id, nom, secteur)')
-      .eq('user_id', userId)
-      .limit(1);
+      .eq('user_id', userId);
     if (error) { setInfo({ type: 'err', text: traduireErreur(error) }); setMembership(null); return; }
-    if (!data || !data.length) { setMembership(null); setSociete(null); return; }
-    setMembership(data[0]);
-    setSociete(data[0].societes);
+    if (!data || !data.length) { setMemberships([]); setMembership(null); setSociete(null); return; }
+    let saved = null;
+    try { saved = window.localStorage.getItem('geopulse_societe'); } catch (e) { /* stockage indisponible */ }
+    setMemberships(data);
+    setChoix((cur) => cur || saved);
   }, [userId]);
+
+  // Société active : celle choisie, sinon la première.
+  useEffect(() => {
+    if (!memberships.length) return;
+    const m = memberships.find((x) => x.societe_id === choix) || memberships[0];
+    setMembership(m);
+    setSociete(m.societes);
+  }, [memberships, choix]);
+
+  const changerSociete = (id) => {
+    setChoix(id);
+    setPoints([]); setTypes([]); setChamps([]); setMembres([]);
+    setPosition(null); setEditing(null); setFiltreType('tous'); setTab('nouveau');
+    try { window.localStorage.setItem('geopulse_societe', id); } catch (e) { /* ignoré */ }
+  };
 
   useEffect(() => {
     if (session === undefined) return;
@@ -166,7 +184,7 @@ export default function ProPage() {
 
   const deconnexion = async () => {
     await supabase.auth.signOut();
-    setMembership(undefined); setSociete(null); setPoints([]); setTypes([]); setChamps([]); setMembres([]);
+    setMembership(undefined); setMemberships([]); setSociete(null); setPoints([]); setTypes([]); setChamps([]); setMembres([]);
   };
 
   // --- États d'écran ---
@@ -194,7 +212,13 @@ export default function ProPage() {
       <aside className="pro-side" style={{ width: '400px', flex: 'none', height: '100%', display: 'flex', flexDirection: 'column', background: 'white', borderRight: '1px solid #e2e8f0' }}>
         <header style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{societe ? societe.nom : 'Société'}</div>
+            {memberships.length > 1 ? (
+              <select value={membership.societe_id} onChange={(e) => changerSociete(e.target.value)} style={{ fontWeight: 'bold', fontSize: '14px', padding: '4px', borderRadius: '6px', border: '1px solid #cbd5e1', maxWidth: '220px' }}>
+                {memberships.map((m) => <option key={m.societe_id} value={m.societe_id}>{m.societes ? m.societes.nom : m.societe_id}</option>)}
+              </select>
+            ) : (
+              <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{societe ? societe.nom : 'Société'}</div>
+            )}
             <div style={{ fontSize: '11px', color: '#64748b' }}>{ROLES[role]} · {session.user.email}</div>
           </div>
           <button type="button" onClick={deconnexion} style={ghostBtn}>Quitter</button>
