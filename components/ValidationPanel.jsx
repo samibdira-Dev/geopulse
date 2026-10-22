@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { traduireErreur } from '../lib/points';
+import { traduireErreur, valeurChamp } from '../lib/points';
 import { btn, ghostBtn, inputStyle, Message, SectionTitle } from './ui';
 
 // Réservé aux managers et administrateurs : points « à valider ».
@@ -73,7 +73,7 @@ export default function ValidationPanel({ points, typesById, champsByType, auteu
 
             <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: '1fr', gap: '2px' }}>
               {champs.map((c) => {
-                const v = donnees[c.cle];
+                const v = valeurChamp(p, c);
                 if (v === undefined || v === null || v === '') return null;
                 return (
                   <div key={c.id} style={{ fontSize: '12px', color: '#334155' }}>

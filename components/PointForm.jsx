@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { champsDuType, champsManquants, isManagerRole, nettoyerDonnees, traduireErreur } from '../lib/points';
+import { champCodeErp, champsDuType, champsLibres, champsManquants, isManagerRole, nettoyerDonnees, traduireErreur } from '../lib/points';
 import Icon from './icons';
 import { inputStyle, labelStyle, btn, ghostBtn, Message, SectionTitle } from './ui';
 
@@ -63,7 +63,10 @@ export default function PointForm({
   const [error, setError] = useState('');
 
   const manager = isManagerRole(role);
-  const champsType = useMemo(() => champsDuType(champs, typeId), [champs, typeId]);
+  const champsDuPoint = useMemo(() => champsDuType(champs, typeId), [champs, typeId]);
+  // Le code ERP a sa propre case (libellé et obligation donnés par le type) ; les autres champs vont dans donnees.
+  const champCode = useMemo(() => champCodeErp(champsDuPoint), [champsDuPoint]);
+  const champsType = useMemo(() => champsLibres(champsDuPoint), [champsDuPoint]);
 
   // Type par défaut : le premier de la liste.
   useEffect(() => {
@@ -102,7 +105,10 @@ export default function PointForm({
     if (!typeId) return setError('Choisissez un type de point.');
     if (!nom.trim()) return setError('Le nom est obligatoire.');
     if (statut !== 'brouillon') {
-      const manquants = champsManquants(champsType, donnees);
+      const manquants = [
+        ...(champCode && champCode.obligatoire && !codeExterne.trim() ? [champCode.libelle] : []),
+        ...champsManquants(champsType, donnees),
+      ];
       if (manquants.length) return setError('Champs obligatoires : ' + manquants.join(', ') + '.');
     }
 
@@ -180,7 +186,7 @@ export default function PointForm({
       </div>
 
       <div>
-        <label style={labelStyle}>Code client (ERP)</label>
+        <label style={labelStyle}>{champCode ? champCode.libelle : 'Code client (ERP)'}{champCode && champCode.obligatoire ? ' *' : ''}</label>
         <input value={codeExterne} onChange={(e) => setCodeExterne(e.target.value)} placeholder="Ex : C00412 — sert à relier les ventes importées" style={inputStyle} />
       </div>
 

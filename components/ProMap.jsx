@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
 
-import { STATUTS, isManagerRole } from '../lib/points';
+import { STATUTS, isManagerRole, valeurChamp } from '../lib/points';
 import { caMensuelMoyen, evolution } from '../lib/ventes';
 
 // Pastille colorée selon le type du point ; l'anneau indique le statut de validation.
@@ -216,10 +216,10 @@ export default function ProMap({
                 </div>
               );
             })()}
-            {champs.some((c) => donnees[c.cle] !== undefined && donnees[c.cle] !== null && donnees[c.cle] !== '') && (
+            {champs.some((c) => { const v = valeurChamp(p, c); return v !== undefined && v !== null && v !== ''; }) && (
               <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '10px', rowGap: '3px', fontSize: '12px' }}>
                 {champs.map((c) => {
-                  const v = donnees[c.cle];
+                  const v = valeurChamp(p, c);
                   if (v === undefined || v === null || v === '') return null;
                   return [
                     <span key={c.id + 'l'} style={{ color: '#94a3b8' }}>{c.libelle}</span>,
