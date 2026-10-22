@@ -199,12 +199,12 @@ export default function ProPage() {
     );
   };
 
-  const modifier = (p) => {
+  const modifier = useCallback((p) => {
     setEditing(p);
     setPosition({ lat: p.latitude, lng: p.longitude, gouvernorat: p.gouvernorat || '', quartier: p.delegation || '', adresse: p.adresse || '', source: p.source_position, precision: p.precision_m });
     setTab('nouveau');
     setView({ center: [p.latitude, p.longitude], zoom: 15 });
-  };
+  }, []);
 
   const focaliser = (p) => setView({ center: [p.latitude, p.longitude], zoom: 16 });
 

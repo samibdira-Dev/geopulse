@@ -1,6 +1,6 @@
 'use client';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Circle, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
-import { useCallback, useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, CircleMarker, Popup, GeoJSON, Circle, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
@@ -9,29 +9,18 @@ import { STATUTS, isManagerRole } from '../lib/points';
 import { caMensuelMoyen, evolution } from '../lib/ventes';
 
 // Pastille colorée selon le type du point ; l'anneau indique le statut de validation.
+// Dessinée sur le canvas (CircleMarker) : la carte reste fluide même avec des milliers de points.
 const RING_BY_STATUT = {
-  valide: { color: '#ffffff', style: 'solid' },
-  a_valider: { color: '#f59e0b', style: 'dashed' },
-  brouillon: { color: '#64748b', style: 'dashed' },
-  rejete: { color: '#dc2626', style: 'solid' },
+  valide: { color: '#ffffff', dashArray: null },
+  a_valider: { color: '#f59e0b', dashArray: '3 3' },
+  brouillon: { color: '#64748b', dashArray: '3 3' },
+  rejete: { color: '#dc2626', dashArray: null },
 };
-const iconCache = {};
-function makeTypeIcon(color, statut) {
-  const key = color + '|' + statut;
-  if (!iconCache[key]) {
-    const ring = RING_BY_STATUT[statut] || RING_BY_STATUT.valide;
-    const opacity = statut === 'brouillon' ? 0.65 : 1;
-    const halo = statut === 'valide' ? `0 0 0 1px ${color}33,` : '';
-    iconCache[key] = L.divIcon({
-      className: '',
-      html: `<div class="gp-marker" style="width:18px;height:18px;box-sizing:border-box;border-radius:50%;background:radial-gradient(circle at 35% 30%, ${color}cc, ${color} 60%);border:2.5px ${ring.style} ${ring.color};box-shadow:${halo}0 2px 6px rgba(15,23,42,.35);opacity:${opacity}"></div>`,
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-      popupAnchor: [0, -10],
-    });
-  }
-  return iconCache[key];
+function styleDuPoint(color, statut) {
+  const ring = RING_BY_STATUT[statut] || RING_BY_STATUT.valide;
+  return { radius: 7.5, color: ring.color, weight: 2.5, dashArray: ring.dashArray, fillColor: color, fillOpacity: statut === 'brouillon' ? 0.6 : 1, opacity: 1 };
 }
+const OMBRE = { radius: 10, stroke: false, fillColor: '#0f172a', fillOpacity: 0.16 };
 
 // Emplacement étudié : repère violet avec une onde qui pulse.
 const simIcon = L.divIcon({
@@ -161,20 +150,108 @@ export default function ProMap({
     };
   }, [selectedGouv, fond]);
 
-  const onEachGouv = (feature, layer) => {
+  // La couche des gouvernorats est créée une seule fois : le style et le clic passent par des refs
+  // (pas de reconstruction des 24 polygones à chaque changement d'onglet ou de fond).
+  const styleRef = useRef(geoStyle);
+  styleRef.current = geoStyle;
+  const selectRef = useRef(onSelectLocation);
+  selectRef.current = onSelectLocation;
+  const geoRef = useRef(null);
+  useEffect(() => {
+    if (geoRef.current) geoRef.current.setStyle(geoStyle);
+  }, [geoStyle]);
+
+  const onEachGouv = useCallback((feature, layer) => {
     const name = getGouvName(feature);
     layer.bindTooltip(name, { sticky: true, direction: 'top', offset: [0, -8] });
     layer.on({
       mouseover: () => layer.setStyle({ fillOpacity: 0.12, weight: 2, opacity: 0.9 }),
-      mouseout: () => layer.setStyle(geoStyle(feature)),
+      mouseout: () => layer.setStyle(styleRef.current(feature)),
       click: (e) => {
         // Empêche l'événement de remonter à la carte (LocationSelector),
         // sinon le géocodage inverse part deux fois pour un seul clic.
         L.DomEvent.stopPropagation(e);
-        if (onSelectLocation) onSelectLocation(e.latlng);
+        if (selectRef.current) selectRef.current(e.latlng);
       }
     });
-  };
+  }, []);
+
+  const ombres = useMemo(
+    () => points.map((p) => <CircleMarker key={'o' + p.id} center={[p.latitude, p.longitude]} pathOptions={OMBRE} interactive={false} />),
+    [points]
+  );
+  const marqueurs = useMemo(() => points.map((p) => {
+    const type = typesById[p.type_id] || { nom: 'Type inconnu', couleur: '#3b82f6' };
+    const statut = STATUTS[p.statut] || STATUTS.valide;
+    const champs = champsByType[p.type_id] || [];
+    const donnees = p.donnees || {};
+    const editable = isManagerRole(role) || (p.cree_par === currentUserId && ['brouillon', 'rejete'].includes(p.statut));
+    return (
+      <CircleMarker
+        key={p.id}
+        center={[p.latitude, p.longitude]}
+        pathOptions={styleDuPoint(type.couleur, p.statut)}
+      >
+        <Popup minWidth={250} maxWidth={290}>
+          <div style={{ fontFamily: 'inherit', lineHeight: 1.45, minWidth: '230px', color: '#334155' }}>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '10.5px', background: type.couleur + '1a', color: type.couleur, padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>{type.nom}</span>
+              <span style={{ fontSize: '10.5px', background: statut.bg, color: statut.color, padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>{statut.label}</span>
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', letterSpacing: '-.01em', paddingRight: '14px' }}>{p.nom}</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '1px' }}>
+              {[p.delegation, p.gouvernorat].filter(Boolean).join(' · ') || 'Zone non renseignée'}{p.code_externe ? ` · ${p.code_externe}` : ''}
+            </div>
+            {ventes[p.id] && (() => {
+              const v = ventes[p.id];
+              const evo = evolution(v);
+              // CA par m² : premier champ numérique « surface » / « m² » du type.
+              const cSurface = champs.find((c) => c.type_champ === 'nombre' && /surface|m2|m²/i.test(c.cle + ' ' + c.libelle));
+              const m2 = cSurface ? Number((p.donnees || {})[cSurface.cle]) : NaN;
+              const caM2 = m2 > 0 && caMensuelMoyen(v) ? caMensuelMoyen(v) / m2 : null;
+              return (
+                <div style={{ marginTop: '10px', background: 'linear-gradient(135deg, #0b1020, #1e1b4b)', color: 'white', padding: '10px 12px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.08em', color: '#a5b4fc', fontWeight: 600 }}>CA 12 mois</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <span style={{ fontSize: '19px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{Math.round(Number(v.ca_12m)).toLocaleString('fr-FR')} TND</span>
+                    {evo != null && <span style={{ fontSize: '11px', fontWeight: 700, color: evo >= 0 ? '#34d399' : '#f87171' }}>{evo >= 0 ? '▲' : '▼'} {Math.abs(Math.round(evo * 100))} %</span>}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#c7d2fe' }}>{Math.round(caMensuelMoyen(v) || 0).toLocaleString('fr-FR')} TND / mois{caM2 != null ? ` · ${Math.round(caM2).toLocaleString('fr-FR')} TND/m²` : ''}</div>
+                </div>
+              );
+            })()}
+            {champs.some((c) => donnees[c.cle] !== undefined && donnees[c.cle] !== null && donnees[c.cle] !== '') && (
+              <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '10px', rowGap: '3px', fontSize: '12px' }}>
+                {champs.map((c) => {
+                  const v = donnees[c.cle];
+                  if (v === undefined || v === null || v === '') return null;
+                  return [
+                    <span key={c.id + 'l'} style={{ color: '#94a3b8' }}>{c.libelle}</span>,
+                    <span key={c.id + 'v'} style={{ color: '#0f172a', fontWeight: 500 }}>{typeof v === 'boolean' ? (v ? 'Oui' : 'Non') : String(v)}</span>,
+                  ];
+                })}
+              </div>
+            )}
+            {p.statut === 'rejete' && p.commentaire_validation && (
+              <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '8px' }}>Motif du rejet : {p.commentaire_validation}</div>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #eef0f4' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ajouté par {p.cree_par === currentUserId ? 'moi' : (auteurs[p.cree_par] || 'un membre')}</span>
+              {editable && onEditPoint && (
+                <button
+                  type="button"
+                  onClick={() => onEditPoint(p)}
+                  style={{ background: '#eef0ff', color: '#4338ca', border: 'none', borderRadius: '8px', padding: '5px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Modifier
+                </button>
+              )}
+            </div>
+          </div>
+        </Popup>
+      </CircleMarker>
+    );
+  }), [points, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes]);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -182,12 +259,14 @@ export default function ProMap({
         center={[34.0, 9.5]}
         zoom={6}
         zoomSnap={0.25}
+        wheelPxPerZoomLevel={110}
+        preferCanvas
         zoomControl={false}
         maxBounds={TUNISIA_BOUNDS}
         maxBoundsViscosity={1.0}
         style={{ height: '100%', width: '100%' }}
       >
-        <TileLayer key={fond} url={(FONDS[fond] || FONDS.clair).url} attribution={(FONDS[fond] || FONDS.clair).attribution} />
+        <TileLayer key={fond} url={(FONDS[fond] || FONDS.clair).url} attribution={(FONDS[fond] || FONDS.clair).attribution} keepBuffer={4} updateWhenZooming={false} />
       
         <ZoomControl position="bottomright" />
         <TunisiaViewport />
@@ -196,86 +275,17 @@ export default function ProMap({
 
         {geoData && (
           <GeoJSON
-            key={selectedGouv + '|' + fond}
-            data={geoData} 
-            style={geoStyle} 
-            onEachFeature={onEachGouv} 
+            ref={geoRef}
+            data={geoData}
+            // Le GeoJSON arrive après les points : on le renvoie sous eux sur le canvas pour que les clics atteignent les points.
+            eventHandlers={{ add: (e) => e.target.bringToBack() }}
+            style={geoStyle}
+            onEachFeature={onEachGouv}
           />
         )}
       
-        {points.map((p) => {
-          const type = typesById[p.type_id] || { nom: 'Type inconnu', couleur: '#3b82f6' };
-          const statut = STATUTS[p.statut] || STATUTS.valide;
-          const champs = champsByType[p.type_id] || [];
-          const donnees = p.donnees || {};
-          const editable = isManagerRole(role) || (p.cree_par === currentUserId && ['brouillon', 'rejete'].includes(p.statut));
-          return (
-            <Marker
-              key={p.id}
-              position={[p.latitude, p.longitude]}
-              icon={makeTypeIcon(type.couleur, p.statut)}
-              title={p.nom}
-            >
-              <Popup minWidth={250} maxWidth={290}>
-                <div style={{ fontFamily: 'inherit', lineHeight: 1.45, minWidth: '230px', color: '#334155' }}>
-                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '10.5px', background: type.couleur + '1a', color: type.couleur, padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>{type.nom}</span>
-                    <span style={{ fontSize: '10.5px', background: statut.bg, color: statut.color, padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>{statut.label}</span>
-                  </div>
-                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', letterSpacing: '-.01em', paddingRight: '14px' }}>{p.nom}</div>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '1px' }}>
-                    {[p.delegation, p.gouvernorat].filter(Boolean).join(' · ') || 'Zone non renseignée'}{p.code_externe ? ` · ${p.code_externe}` : ''}
-                  </div>
-                  {ventes[p.id] && (() => {
-                    const v = ventes[p.id];
-                    const evo = evolution(v);
-                    // CA par m² : premier champ numérique « surface » / « m² » du type.
-                    const cSurface = champs.find((c) => c.type_champ === 'nombre' && /surface|m2|m²/i.test(c.cle + ' ' + c.libelle));
-                    const m2 = cSurface ? Number((p.donnees || {})[cSurface.cle]) : NaN;
-                    const caM2 = m2 > 0 && caMensuelMoyen(v) ? caMensuelMoyen(v) / m2 : null;
-                    return (
-                      <div style={{ marginTop: '10px', background: 'linear-gradient(135deg, #0b1020, #1e1b4b)', color: 'white', padding: '10px 12px', borderRadius: '12px' }}>
-                        <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.08em', color: '#a5b4fc', fontWeight: 600 }}>CA 12 mois</div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                          <span style={{ fontSize: '19px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{Math.round(Number(v.ca_12m)).toLocaleString('fr-FR')} TND</span>
-                          {evo != null && <span style={{ fontSize: '11px', fontWeight: 700, color: evo >= 0 ? '#34d399' : '#f87171' }}>{evo >= 0 ? '▲' : '▼'} {Math.abs(Math.round(evo * 100))} %</span>}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#c7d2fe' }}>{Math.round(caMensuelMoyen(v) || 0).toLocaleString('fr-FR')} TND / mois{caM2 != null ? ` · ${Math.round(caM2).toLocaleString('fr-FR')} TND/m²` : ''}</div>
-                      </div>
-                    );
-                  })()}
-                  {champs.some((c) => donnees[c.cle] !== undefined && donnees[c.cle] !== null && donnees[c.cle] !== '') && (
-                    <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '10px', rowGap: '3px', fontSize: '12px' }}>
-                      {champs.map((c) => {
-                        const v = donnees[c.cle];
-                        if (v === undefined || v === null || v === '') return null;
-                        return [
-                          <span key={c.id + 'l'} style={{ color: '#94a3b8' }}>{c.libelle}</span>,
-                          <span key={c.id + 'v'} style={{ color: '#0f172a', fontWeight: 500 }}>{typeof v === 'boolean' ? (v ? 'Oui' : 'Non') : String(v)}</span>,
-                        ];
-                      })}
-                    </div>
-                  )}
-                  {p.statut === 'rejete' && p.commentaire_validation && (
-                    <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '8px' }}>Motif du rejet : {p.commentaire_validation}</div>
-                  )}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #eef0f4' }}>
-                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ajouté par {p.cree_par === currentUserId ? 'moi' : (auteurs[p.cree_par] || 'un membre')}</span>
-                    {editable && onEditPoint && (
-                      <button
-                        type="button"
-                        onClick={() => onEditPoint(p)}
-                        style={{ background: '#eef0ff', color: '#4338ca', border: 'none', borderRadius: '8px', padding: '5px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        Modifier
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
+        {ombres}
+        {marqueurs}
 
         {simulatedPoint && zoneKm && (
           <Circle

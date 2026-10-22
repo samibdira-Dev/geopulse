@@ -37,11 +37,10 @@ button:not(:disabled):active { transform: translateY(1px); }
   content: ''; position: absolute; left: -10px; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0;
   background: linear-gradient(180deg, #818cf8, #c084fc);
 }
+/* Pas de backdrop-filter : recalculé à chaque image pendant un déplacement de carte, il la ralentit. */
 .gp-glass {
-  background: rgba(255, 255, 255, .86);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, .7);
+  background: rgba(255, 255, 255, .96);
+  border: 1px solid rgba(231, 233, 240, .9);
   box-shadow: 0 1px 2px rgba(15,23,42,.06), 0 10px 30px rgba(15,23,42,.12);
 }
 .gp-seg button:hover { color: var(--text); }
@@ -81,8 +80,6 @@ button:not(:disabled):active { transform: translateY(1px); }
 .leaflet-control-attribution {
   background: rgba(255,255,255,.75) !important; border-radius: 8px 0 0 0; font-size: 10px; color: #64748b;
 }
-.gp-marker { transition: transform .15s; }
-.gp-marker:hover { transform: scale(1.18); }
 @keyframes gp-pulse {
   0% { transform: scale(.6); opacity: .7; }
   100% { transform: scale(2.4); opacity: 0; }
