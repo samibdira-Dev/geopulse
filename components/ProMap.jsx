@@ -211,11 +211,15 @@ export default function ProMap({
                   {ventes[p.id] && (() => {
                     const v = ventes[p.id];
                     const evo = evolution(v);
+                    // CA par m² : premier champ numérique « surface » / « m² » du type.
+                    const cSurface = champs.find((c) => c.type_champ === 'nombre' && /surface|m2|m²/i.test(c.cle + ' ' + c.libelle));
+                    const m2 = cSurface ? Number((p.donnees || {})[cSurface.cle]) : NaN;
+                    const caM2 = m2 > 0 && caMensuelMoyen(v) ? caMensuelMoyen(v) / m2 : null;
                     return (
                       <div style={{ fontSize: '12px', color: '#334155', marginTop: '4px', background: '#f5f3ff', padding: '4px 6px', borderRadius: '4px' }}>
                         <b>CA 12 mois :</b> {Math.round(Number(v.ca_12m)).toLocaleString('fr-FR')} TND
                         {evo != null && <span style={{ color: evo >= 0 ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}> ({evo >= 0 ? '+' : ''}{Math.round(evo * 100)} %)</span>}
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>Moyenne {Math.round(caMensuelMoyen(v) || 0).toLocaleString('fr-FR')} TND / mois{p.code_externe ? ` · code ${p.code_externe}` : ''}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>Moyenne {Math.round(caMensuelMoyen(v) || 0).toLocaleString('fr-FR')} TND / mois{caM2 != null ? ` · ${Math.round(caM2).toLocaleString('fr-FR')} TND/m²` : ''}{p.code_externe ? ` · code ${p.code_externe}` : ''}</div>
                       </div>
                     );
                   })()}

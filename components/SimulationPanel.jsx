@@ -35,14 +35,19 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     return () => { actif = false; };
   }, []);
 
+  // Surface du point simulé (m²) : vide = surface médiane de vos points.
+  const [surfaceSaisie, setSurfaceSaisie] = useState('');
+
   const res = useMemo(
-    () => (position ? simuler({ position, rayonKm, points, typesById, demographie, surfaces, grille, ventes, cleCA }) : null),
-    [position, rayonKm, points, typesById, demographie, surfaces, grille, ventes, cleCA]
+    () => (position ? simuler({ position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceNouveau: surfaceSaisie }) : null),
+    [position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceSaisie]
   );
 
-  const niveau = !res ? null : res.cannibalisation < 0.15
+  const huff = res && res.methodeCA === 'huff';
+  const tauxCannib = !res ? 0 : huff ? res.cannibalisationCA : res.cannibalisation;
+  const niveau = !res ? null : tauxCannib < 0.15
     ? { label: 'Faible', color: '#16a34a' }
-    : res.cannibalisation < 0.4 ? { label: 'Moyen', color: '#d97706' } : { label: 'Élevé', color: '#dc2626' };
+    : tauxCannib < 0.4 ? { label: 'Moyen', color: '#d97706' } : { label: 'Élevé', color: '#dc2626' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -64,6 +69,12 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
         </div>
       </div>
 
+      <div>
+        <label style={labelStyle}>Surface du point étudié (m²)</label>
+        <input type="number" min="0" value={surfaceSaisie} onChange={(e) => setSurfaceSaisie(e.target.value)}
+          placeholder={res && res.surfaceMediane ? `${fmt(res.surfaceMediane)} m² (médiane de vos points)` : 'Surface en m²'} style={inputStyle} />
+      </div>
+
       {!position && (
         <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
           Aucun emplacement sélectionné.
@@ -80,15 +91,19 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
             <Carte
               titre="CA mensuel estimé"
               valeur={res.caEstime != null ? `${fmt(res.caEstime)} TND` : '—'}
-              detail={res.sourceCA === 'ventes' ? `Ventes réelles de ${res.nbValeursCA} points (12 mois), ajustées de la cannibalisation`
+              detail={huff
+                ? [res.caParM2 != null ? `${fmt(res.caParM2)} TND/m²` : null, `${fmt(res.habitantsCaptes)} habitants captés`,
+                  `${(Math.round(res.caParHabitant * 100) / 100).toLocaleString('fr-FR')} TND/hab./mois (${res.sourceCA === 'ventes' ? 'ventes' : 'CA'} de ${res.nbValeursCA} points)`].filter(Boolean).join(' · ')
+                : res.sourceCA === 'ventes' ? `Ventes réelles de ${res.nbValeursCA} points (12 mois), ajustées de la cannibalisation`
                 : res.sourceCA === 'champ' ? `Médiane de ${res.nbValeursCA} points, ajustée de la cannibalisation` : 'Pas encore de ventes importées'}
               couleur="#5b21b6"
               fond="#f5f3ff"
             />
             <Carte
               titre="Cannibalisation"
-              valeur={<span style={{ color: niveau.color }}>{niveau.label} ({Math.round(res.cannibalisation * 100)} %)</span>}
-              detail={res.plusProche ? `PDV le plus proche à ${km(res.plusProche.distance)}` : 'Aucun PDV validé'}
+              valeur={<span style={{ color: niveau.color }}>{niveau.label} ({Math.round(tauxCannib * 100)} %)</span>}
+              detail={huff && res.transfert > 0 ? `${fmt(res.transfert)} TND/mois pris à vos points voisins`
+                : res.plusProche ? `PDV le plus proche à ${km(res.plusProche.distance)}` : 'Aucun PDV validé'}
             />
             <Carte
               titre="Population de la zone"
@@ -135,12 +150,22 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
           <details style={{ fontSize: '11px', color: '#64748b' }}>
             <summary style={{ cursor: 'pointer' }}>Méthode de calcul</summary>
             <p style={{ margin: '6px 0 0', lineHeight: 1.5 }}>
-              Zone : cercle de {km(rayonKm)} autour du point (à vol d’oiseau). Population : somme des habitants des carrés de
-              250 m situés dans le cercle, d’après la grille High Resolution Settlement Layer (Meta et CIESIN, licence CC BY 4.0).
-              Ménages : population ÷ taille moyenne des ménages du gouvernorat (INS).
-              Cannibalisation : part de la zone déjà à moins de {km(rayonKm)} d’un de vos points (points de vente ou clients) validés.
-              CA : médiane du CA mensuel de vos points validés (moyenne des 12 derniers mois de ventes importées, sinon le champ choisi)
-              × (1 − cannibalisation ÷ 2), car dans la partie déjà couverte la clientèle se partage entre l’ancien et le nouveau point.
+              Zone : cercle de {km(rayonKm)} autour du point (à vol d’oiseau). Population : habitants des carrés de 250 m de la grille
+              High Resolution Settlement Layer (Meta et CIESIN, licence CC BY 4.0). Ménages : population ÷ taille moyenne des ménages du gouvernorat (INS).
+              {huff ? (
+                <>
+                  {' '}CA : chaque carré de 250 m partage ses habitants entre tous les points à moins de {km(rayonKm)} (les vôtres, les concurrents
+                  et le point étudié), au prorata de la surface (m²) ÷ distance². Le CA mensuel par habitant capté est mesuré sur vos points
+                  (moyenne des 12 derniers mois de ventes, sinon le champ choisi) ; on retient la médiane, multipliée par les habitants captés
+                  par le point étudié. Cannibalisation : CA que le point étudié prend à vos points voisins, en part de son CA.
+                  Surface inconnue : surface médiane de vos points.
+                </>
+              ) : (
+                <>
+                  {' '}Cannibalisation : part de la zone déjà à moins de {km(rayonKm)} d’un de vos points validés.
+                  CA : médiane du CA mensuel de vos points validés × (1 − cannibalisation ÷ 2).
+                </>
+              )}
             </p>
           </details>
 
