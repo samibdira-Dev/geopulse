@@ -122,7 +122,8 @@ export default function PointForm({
       adresse: adresse.trim() || null,
       source_position: position.source || 'pin_manuel',
       precision_m: position.precision == null ? null : position.precision,
-      donnees: nettoyerDonnees(champsType, donnees),
+      // Le code ERP est aussi recopié dans donnees : la base vérifie les champs obligatoires du type dans donnees.
+      donnees: { ...nettoyerDonnees(champsType, donnees), ...(champCode && codeExterne.trim() ? { [champCode.cle]: codeExterne.trim() } : {}) },
       statut,
     };
     // Code client de l'ERP : envoyé seulement s'il est utilisé (la colonne arrive avec le script ventes.sql).
