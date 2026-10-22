@@ -2,7 +2,7 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, supabaseConfigured } from '../../lib/supabase';
-import { isManagerRole, ROLES, traduireErreur } from '../../lib/points';
+import { chargerTout, isManagerRole, ROLES, traduireErreur } from '../../lib/points';
 import { adresseAt, dansTunisie, gouvernoratAt } from '../../lib/geo';
 import LoginScreen from '../../components/LoginScreen';
 import SocieteSetup from '../../components/SocieteSetup';
@@ -121,7 +121,7 @@ export default function ProPage() {
     const [t, c, p, m] = await Promise.all([
       supabase.from('types_point').select('*').eq('societe_id', sid).order('ordre'),
       supabase.from('champs_type').select('*').eq('societe_id', sid).order('ordre'),
-      supabase.from('points').select('*').eq('societe_id', sid).order('cree_le', { ascending: false }).limit(5000),
+      chargerTout(() => supabase.from('points').select('*').eq('societe_id', sid).order('cree_le', { ascending: false }).order('id')),
       supabase.from('membres').select('user_id, role, nom_affiche').eq('societe_id', sid),
     ]);
     if (num !== requete.current) return;
@@ -132,7 +132,7 @@ export default function ProPage() {
     setPoints(p.data || []);
     setMembres(m.data || []);
     // Synthèse des ventes : absente tant que le script ventes.sql n'a pas été lancé (on l'ignore alors).
-    const v = await supabase.rpc('ventes_resume', { p_societe: sid });
+    const v = await chargerTout(() => supabase.rpc('ventes_resume', { p_societe: sid }).order('point_id'));
     if (num !== requete.current) return;
     setVentes(Object.fromEntries((v.data || []).map((r) => [r.point_id, r])));
   }, [membership]);

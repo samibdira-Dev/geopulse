@@ -3,10 +3,14 @@ import { useMemo, useState } from 'react';
 import { STATUTS, peutModifier } from '../lib/points';
 import { StatutBadge, ghostBtn, SectionTitle, chip, inputStyle, Empty } from './ui';
 
+const PAGE = 200;
+
 export default function PointsList({ points, typesById, auteurs, userId, role, onFocus, onEdit, onDelete }) {
   const [statut, setStatut] = useState('tous');
   const [portee, setPortee] = useState('tous');
   const [recherche, setRecherche] = useState('');
+  // Affichage par tranches : une liste de plusieurs milliers de fiches ralentirait l'écran.
+  const [limite, setLimite] = useState(PAGE);
 
   const filtres = useMemo(() => {
     const q = recherche.trim().toLowerCase();
@@ -45,7 +49,7 @@ export default function PointsList({ points, typesById, auteurs, userId, role, o
         <Empty icon="search">Aucun point ne correspond.</Empty>
       )}
 
-      {filtres.map((p) => {
+      {filtres.slice(0, limite).map((p) => {
         const type = typesById[p.type_id];
         const modifiable = peutModifier(p, role, userId);
         return (
@@ -84,6 +88,12 @@ export default function PointsList({ points, typesById, auteurs, userId, role, o
           </div>
         );
       })}
+
+      {filtres.length > limite && (
+        <button type="button" onClick={() => setLimite(limite + PAGE)} style={{ ...ghostBtn, justifyContent: 'center', padding: '10px' }}>
+          Afficher {Math.min(PAGE, filtres.length - limite)} points de plus ({(filtres.length - limite).toLocaleString('fr-FR')} restants)
+        </button>
+      )}
     </div>
   );
 }

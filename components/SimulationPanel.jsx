@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { champsCA, simuler } from '../lib/simulation';
 import { chargerGrille } from '../lib/population';
+import { preparerMoteur } from '../lib/huff';
 import { calibrerModele, combinerTests, ecartMethodes, fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
 import { calculerRentabilite, parametresDuType } from '../lib/rentabilite';
 import { depenseDuType, potentielMarche, reperesReseau } from '../lib/marche';
@@ -69,10 +70,15 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   // Réglage du modèle sur les ventes (étape 2) puis test « un magasin caché » (étape 1). Ne dépend pas de
   // l'emplacement étudié : recalculé quand les données ou le rayon changent, en tâche de fond, et gardé en
   // mémoire tant que les points de la société ne sont pas rechargés.
+  // Réseau préparé pour le modèle de partage (carrés de population autour de chaque point), pour ce rayon.
+  const moteur = useMemo(
+    () => (grille ? preparerMoteur({ rayonKm, points, typesById, champs, grille, ventes, cleCA }) : null),
+    [rayonKm, points, typesById, champs, grille, ventes, cleCA]
+  );
   const [calib, setCalib] = useState(undefined);
   useEffect(() => {
-    if (!grille) { setCalib(undefined); return undefined; }
-    const params = { rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA };
+    if (!grille || !moteur) { setCalib(undefined); return undefined; }
+    const params = { rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, moteur };
     const parRayon = CALIBRAGES.get(points) || new Map();
     CALIBRAGES.set(points, parRayon);
     const cle = `${rayonKm}|${cleCA}`;
@@ -87,7 +93,7 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
       setCalib(resultat);
     });
     return () => { annule = true; };
-  }, [rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA]);
+  }, [rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, moteur]);
 
   // Magasins jumeaux (étape 3) : profil de chaque point du réseau, puis test « un magasin caché » de la méthode.
   const reseauJ = useMemo(
@@ -98,8 +104,8 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   const test = calib ? combinerTests(calib.test, testJ) : undefined;
 
   const res = useMemo(
-    () => (position && (calib !== undefined || !grille) ? simuler({ position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceNouveau: surfaceSaisie, reglage: calib ? calib.reglage : REGLAGE_DEFAUT }) : null),
-    [position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceSaisie, calib]
+    () => (position && (calib !== undefined || !grille) ? simuler({ position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceNouveau: surfaceSaisie, reglage: calib ? calib.reglage : REGLAGE_DEFAUT, moteur }) : null),
+    [position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceSaisie, calib, moteur]
   );
 
   const huff = res && res.methodeCA === 'huff';

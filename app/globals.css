@@ -93,6 +93,9 @@ button:not(:disabled):active { transform: translateY(1px); }
   .pro-rail .gp-rail-logo, .pro-rail .gp-rail-bas { display: none !important; }
   .pro-rail nav { flex-direction: row !important; }
   .gp-rail-item.actif::before { display: none; }
+  .pro-rail .gp-rail-item { flex: none; min-width: 66px !important; }
+  .pro-rail .gp-rail-item span { white-space: nowrap; font-size: 10px !important; }
+  .pro-rail .gp-rail-item span:empty { display: none; }
   .pro-panel { width: 100% !important; }
   .pro-map { height: 42vh !important; flex: none !important; }
   .gp-legend { display: none !important; }

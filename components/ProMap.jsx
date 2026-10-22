@@ -176,11 +176,16 @@ export default function ProMap({
     });
   }, []);
 
+  // Ordre de dessin : concurrents d'abord, puis prospects, et le réseau de la société par-dessus.
+  const ordonnes = useMemo(() => {
+    const rang = (p) => ({ concurrent: 0, autre: 1, prospect: 2 })[(typesById[p.type_id] || {}).categorie] ?? 3;
+    return [...points].sort((a, b) => rang(a) - rang(b));
+  }, [points, typesById]);
   const ombres = useMemo(
-    () => points.map((p) => <CircleMarker key={'o' + p.id} center={[p.latitude, p.longitude]} pathOptions={OMBRE} interactive={false} />),
-    [points]
+    () => ordonnes.map((p) => <CircleMarker key={'o' + p.id} center={[p.latitude, p.longitude]} pathOptions={OMBRE} interactive={false} />),
+    [ordonnes]
   );
-  const marqueurs = useMemo(() => points.map((p) => {
+  const marqueurs = useMemo(() => ordonnes.map((p) => {
     const type = typesById[p.type_id] || { nom: 'Type inconnu', couleur: '#3b82f6' };
     const statut = STATUTS[p.statut] || STATUTS.valide;
     const champs = champsByType[p.type_id] || [];
@@ -251,7 +256,7 @@ export default function ProMap({
         </Popup>
       </CircleMarker>
     );
-  }), [points, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes]);
+  }), [ordonnes, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes]);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -286,6 +291,16 @@ export default function ProMap({
       
         {ombres}
         {marqueurs}
+
+        {simulatedPoint && simulatedPoint.source === 'gps' && simulatedPoint.precision > 0 && (
+          // Précision du GPS du téléphone : la position réelle est quelque part dans ce cercle.
+          <Circle
+            center={[simulatedPoint.lat, simulatedPoint.lng]}
+            radius={simulatedPoint.precision}
+            pathOptions={{ color: '#2563eb', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.15 }}
+            interactive={false}
+          />
+        )}
 
         {simulatedPoint && zoneKm && (
           <Circle
