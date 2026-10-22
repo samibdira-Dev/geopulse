@@ -40,23 +40,10 @@ const simIcon = L.divIcon({
   popupAnchor: [0, -38],
 });
 
-// Fonds de carte proposés (bouton « Clair / Plan / Satellite »).
-const FONDS = {
-  // CARTO exige désormais une clé : fond gris clair d'Esri, avec ses noms de lieux par-dessus.
-  clair: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-    labels: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Fond &copy; Esri, HERE, Garmin, &copy; OpenStreetMap',
-    maxNativeZoom: 16,
-  },
-  plan: {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap contributors',
-  },
-  satellite: {
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    attribution: 'Imagerie &copy; Esri, Maxar, Earthstar Geographics',
-  },
+// Fond de carte unique : le plan OpenStreetMap (une seule couche de tuiles, plus léger sur téléphone).
+const FOND = {
+  url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  attribution: '&copy; OpenStreetMap contributors',
 };
 
 // Emprise de la Tunisie (sud-ouest, nord-est) : la vue ne peut pas en sortir.
@@ -118,8 +105,6 @@ export default function ProMap({
   view,
   zoneKm = null,         // rayon de la zone simulée autour du point (km)
   ventes = {},           // id du point -> synthèse des ventes
-  fond = 'clair',        // fond de carte : clair, plan ou satellite
-  onFondIndisponible,    // appelé si les tuiles du fond ne se chargent pas (on passe alors au plan)
   compact = false,       // téléphone : points plus petits, pas de boutons de zoom
 }) {
   const [geoData, setGeoData] = useState(null);
@@ -146,16 +131,15 @@ export default function ProMap({
   const geoStyle = useCallback((feature) => {
     const name = getGouvName(feature);
     const isSelected = !!selectedGouv && selectedGouv !== 'Tous' && sameGouvernorat(name, selectedGouv);
-    const satellite = fond === 'satellite';
 
     return {
       fillColor: '#6366f1',
       weight: isSelected ? 2.5 : 1,
-      opacity: isSelected ? 1 : satellite ? 0.7 : 0.45,
-      color: isSelected ? '#4f46e5' : satellite ? '#ffffff' : '#6366f1',
-      fillOpacity: isSelected ? 0.18 : satellite ? 0 : 0.035,
+      opacity: isSelected ? 1 : 0.45,
+      color: isSelected ? '#4f46e5' : '#6366f1',
+      fillOpacity: isSelected ? 0.18 : 0.035,
     };
-  }, [selectedGouv, fond]);
+  }, [selectedGouv]);
 
   // La couche des gouvernorats est créée une seule fois : le style et le clic passent par des refs
   // (pas de reconstruction des 24 polygones à chaque changement d'onglet ou de fond).
@@ -265,15 +249,6 @@ export default function ProMap({
     );
   }), [ordonnes, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes, compact]);
 
-  // Fond indisponible (tuiles refusées) : après quelques erreurs, on bascule sur le plan OpenStreetMap.
-  const fondActif = FONDS[fond] || FONDS.clair;
-  const erreurs = useRef(0);
-  useEffect(() => { erreurs.current = 0; }, [fond]);
-  const erreurTuile = () => {
-    erreurs.current += 1;
-    if (erreurs.current === 6 && fond !== 'plan' && onFondIndisponible) onFondIndisponible();
-  };
-
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <MapContainer
@@ -287,9 +262,7 @@ export default function ProMap({
         maxBoundsViscosity={1.0}
         style={{ height: '100%', width: '100%' }}
       >
-        <TileLayer key={fond} url={fondActif.url} attribution={fondActif.attribution} maxNativeZoom={fondActif.maxNativeZoom} keepBuffer={4} updateWhenZooming={false}
-          eventHandlers={{ tileerror: erreurTuile }} />
-        {fondActif.labels && <TileLayer key={fond + '-noms'} url={fondActif.labels} maxNativeZoom={fondActif.maxNativeZoom} keepBuffer={4} updateWhenZooming={false} />}
+        <TileLayer url={FOND.url} attribution={FOND.attribution} keepBuffer={4} updateWhenZooming={false} />
 
         {!compact && <ZoomControl position="bottomright" />}
         <TunisiaViewport />

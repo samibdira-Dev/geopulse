@@ -46,7 +46,6 @@ export default function ProPage() {
   const [demographie, setDemographie] = useState([]);
   const [rayonKm, setRayonKm] = useState(1);
   const [gouvDemo, setGouvDemo] = useState('Tous');
-  const [fond, setFond] = useState('clair'); // fond de carte : clair, plan ou satellite
   const requete = useRef(0);
   // Téléphone : carte plein écran, onglets en bas, panneau fermé, à moitié ou en plein écran.
   const [mobile, setMobile] = useState(false);
@@ -432,11 +431,6 @@ export default function ProPage() {
             )}
           </div>
           <div style={{ display: 'flex', gap: '8px', pointerEvents: 'auto', alignItems: 'flex-start' }}>
-            <div className="gp-glass gp-seg" style={{ display: 'flex', padding: '4px', borderRadius: '12px', gap: '2px' }}>
-              {FONDS.map(([k, label]) => (
-                <button key={k} type="button" onClick={() => setFond(k)} style={{ border: 'none', borderRadius: '9px', padding: '7px 11px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: fond === k ? C.ink : 'transparent', color: fond === k ? 'white' : C.muted }}>{label}</button>
-              ))}
-            </div>
             <button type="button" onClick={() => setView({ reset: true })} className="gp-glass" style={{ border: 'none', borderRadius: '12px', padding: '9px 13px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', gap: '7px' }}>
               <Icon name="crosshair" size={15} /> <span className="gp-texte-large">Tunisie</span>
             </button>
@@ -480,8 +474,6 @@ export default function ProPage() {
           onDragSimulated={(ll) => poser(ll.lat, ll.lng, 'pin_manuel')}
           view={view}
           ventes={ventes}
-          fond={fond}
-          onFondIndisponible={() => setFond('plan')}
           compact={mobile}
           selectedGouv={tab === 'demographie' ? gouvDemo : null}
           zoneKm={tab === 'simuler' && position ? rayonKm : null}
@@ -491,7 +483,6 @@ export default function ProPage() {
   );
 }
 
-const FONDS = [['clair', 'Clair'], ['plan', 'Plan'], ['satellite', 'Satellite']];
 
 function formatCompact(n) {
   if (n >= 1e6) return (Math.round(n / 1e5) / 10).toLocaleString('fr-FR') + ' M';

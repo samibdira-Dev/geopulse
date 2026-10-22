@@ -121,11 +121,9 @@ button:not(:disabled):active { transform: translateY(1px); }
   .gp-stats { padding: 6px 10px !important; gap: 9px !important; }
   .gp-stats .num { font-size: 15px !important; }
   .gp-stats > div > div:last-child { font-size: 9.5px !important; }
-  .gp-seg { padding: 3px !important; }
-  .gp-seg button { padding: 6px 8px !important; font-size: 11px !important; }
   .gp-texte-large { display: none; }
   .gp-legende-btn { display: inline-flex !important; }
-  .gp-legend { display: none !important; top: calc(env(safe-area-inset-top) + 104px); bottom: auto !important; left: 8px !important; max-height: 45dvh; overflow-y: auto; min-width: 0 !important; }
+  .gp-legend { display: none !important; top: calc(env(safe-area-inset-top) + 62px); bottom: auto !important; left: 8px !important; max-height: 45dvh; overflow-y: auto; min-width: 0 !important; }
   .gp-legend.ouverte { display: block !important; }
   .leaflet-control-attribution { font-size: 9px; }
   /* Mentions des fonds de carte au-dessus du panneau fermé */
