@@ -56,7 +56,11 @@ export default function ProPage() {
   useEffect(() => {
     if (!supabaseConfigured) { setSession(null); return undefined; }
     supabase.auth.getSession().then(({ data }) => setSession(data.session || null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s || null));
+    // Supabase renvoie une session à chaque retour sur l'onglet et à chaque renouvellement du jeton : on garde
+    // la même tant que l'utilisateur ne change pas, sinon toute l'application se recharge.
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession((cur) => (
+      cur && s && cur.user.id === s.user.id ? cur : s || null
+    )));
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -68,9 +72,9 @@ export default function ProPage() {
 
   // Données démographiques INS (communes à toutes les sociétés)
   useEffect(() => {
-    if (!session) return;
+    if (!userId) return;
     supabase.from('decoupage_administratif').select('*').then(({ data }) => setDemographie(data || []));
-  }, [session]);
+  }, [userId]);
 
   const choisirGouvDemo = (g) => {
     setGouvDemo(g);
@@ -96,7 +100,7 @@ export default function ProPage() {
   useEffect(() => {
     if (!memberships.length) return;
     const m = memberships.find((x) => x.societe_id === choix) || memberships[0];
-    setMembership(m);
+    setMembership((cur) => (cur && cur.societe_id === m.societe_id && cur.role === m.role ? cur : m));
     setSociete(m.societes);
   }, [memberships, choix]);
 
