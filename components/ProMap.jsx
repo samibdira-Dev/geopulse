@@ -1,5 +1,5 @@
 'use client';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Circle, useMapEvents, useMap } from 'react-leaflet';
 import { useCallback, useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -96,6 +96,7 @@ export default function ProMap({
   onDragSimulated,
   selectedGouv,
   view,
+  zoneKm = null,         // rayon de la zone simulée autour du point (km)
 }) {
   const [geoData, setGeoData] = useState(null);
 
@@ -225,6 +226,15 @@ export default function ProMap({
             </Marker>
           );
         })}
+
+        {simulatedPoint && zoneKm && (
+          <Circle
+            center={[simulatedPoint.lat, simulatedPoint.lng]}
+            radius={zoneKm * 1000}
+            pathOptions={{ color: '#7c3aed', weight: 2, fillColor: '#8b5cf6', fillOpacity: 0.12, dashArray: '6 4' }}
+            interactive={false}
+          />
+        )}
 
         {simulatedPoint && (
           <Marker

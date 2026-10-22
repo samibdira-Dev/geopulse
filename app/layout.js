@@ -1,8 +1,8 @@
 import './globals.css'
 
 export const metadata = {
-  title: 'GeoPulse - SOPAT Géomarketing',
-  description: 'Solution de géomarketing et d optimisation de réseau pour SOPAT',
+  title: 'GeoPulse - Géomarketing Tunisie',
+  description: 'Solution de géomarketing et d’optimisation de réseaux de points de vente en Tunisie',
 }
 
 export default function RootLayout({ children }) {

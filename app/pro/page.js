@@ -11,6 +11,10 @@ import PointsList from '../../components/PointsList';
 import ValidationPanel from '../../components/ValidationPanel';
 import TeamPanel from '../../components/TeamPanel';
 import TypesAdmin from '../../components/TypesAdmin';
+import SimulationPanel from '../../components/SimulationPanel';
+import DemographiePanel from '../../components/DemographiePanel';
+import { surfacesGouvernorats } from '../../lib/simulation';
+import { GOUV_COORDS } from '../../lib/gouvernorats';
 import { Message, ghostBtn } from '../../components/ui';
 
 const ProMap = dynamic(() => import('../../components/ProMap'), {
@@ -35,6 +39,9 @@ export default function ProPage() {
   const [geo, setGeo] = useState(null);
   const [filtreType, setFiltreType] = useState('tous');
   const [info, setInfo] = useState(null);
+  const [demographie, setDemographie] = useState([]);
+  const [rayonKm, setRayonKm] = useState(1);
+  const [gouvDemo, setGouvDemo] = useState('Tous');
   const requete = useRef(0);
 
   const userId = session ? session.user.id : null;
@@ -53,6 +60,18 @@ export default function ProPage() {
   useEffect(() => {
     fetch('/tn-gouvernorats.geojson').then((r) => r.json()).then(setGeo).catch(() => {});
   }, []);
+  const surfaces = useMemo(() => surfacesGouvernorats(geo), [geo]);
+
+  // Données démographiques INS (communes à toutes les sociétés)
+  useEffect(() => {
+    if (!session) return;
+    supabase.from('decoupage_administratif').select('*').then(({ data }) => setDemographie(data || []));
+  }, [session]);
+
+  const choisirGouvDemo = (g) => {
+    setGouvDemo(g);
+    setView(g !== 'Tous' && GOUV_COORDS[g] ? { center: GOUV_COORDS[g], zoom: 10 } : { reset: true });
+  };
 
   // Société de l'utilisateur
   const chargerMembership = useCallback(async () => {
@@ -138,7 +157,7 @@ export default function ProPage() {
     setInfo(null);
     const base = { lat, lng, gouvernorat: gouvernoratAt(geo, lat, lng), quartier: '', adresse: '', source, precision };
     setPosition(base);
-    setTab((t) => (t === 'nouveau' ? t : 'nouveau'));
+    setTab((t) => (t === 'nouveau' || t === 'simuler' ? t : 'nouveau'));
     const a = await adresseAt(lat, lng);
     setPosition((cur) => (cur && cur.lat === lat && cur.lng === lng ? { ...cur, quartier: a.quartier, adresse: a.adresse } : cur));
   }, [geo]);
@@ -200,7 +219,9 @@ export default function ProPage() {
 
   const onglets = [
     ['nouveau', editing ? '✏️ Modifier' : '➕ Nouveau'],
+    ['simuler', '🎯 Simuler'],
     ['points', '📋 Points'],
+    ['demographie', '👥 Démographie'],
     ...(manager ? [['valider', `✅ À valider${aValiderCount ? ` (${aValiderCount})` : ''}`]] : []),
     ...(role === 'admin' ? [['types', '🏷️ Types'], ['equipe', '🧑‍🤝‍🧑 Équipe']] : []),
   ];
@@ -249,6 +270,24 @@ export default function ProPage() {
             />
           ))}
 
+          {tab === 'simuler' && (
+            <SimulationPanel
+              position={position}
+              rayonKm={rayonKm}
+              onRayon={setRayonKm}
+              points={points}
+              typesById={typesById}
+              champs={champs}
+              demographie={demographie}
+              surfaces={surfaces}
+              onAjouter={() => { setEditing(null); setTab('nouveau'); }}
+            />
+          )}
+
+          {tab === 'demographie' && (
+            <DemographiePanel demographie={demographie} gouvernorat={gouvDemo} onGouvernorat={choisirGouvDemo} />
+          )}
+
           {tab === 'points' && (
             <PointsList points={points} typesById={typesById} auteurs={auteurs} userId={userId} role={role} onFocus={focaliser} onEdit={modifier} onDelete={supprimer} />
           )}
@@ -287,6 +326,8 @@ export default function ProPage() {
           simulatedPoint={position}
           onDragSimulated={(ll) => poser(ll.lat, ll.lng, 'pin_manuel')}
           view={view}
+          selectedGouv={tab === 'demographie' ? gouvDemo : null}
+          zoneKm={tab === 'simuler' && position ? rayonKm : null}
         />
       </section>
     </div>
