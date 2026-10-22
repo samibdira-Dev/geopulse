@@ -19,8 +19,8 @@ function Carte({ titre, valeur, detail, couleur = '#0f172a', fond = 'white' }) {
 }
 
 // Simulateur d'emplacement : population de la zone, cannibalisation, concurrence et CA estimé.
-export default function SimulationPanel({ position, rayonKm, onRayon, points, typesById, champs, demographie, surfaces, onAjouter }) {
-  const typesPdv = useMemo(() => Object.values(typesById).filter((t) => t.categorie === 'point_de_vente').map((t) => t.id), [typesById]);
+export default function SimulationPanel({ position, rayonKm, onRayon, points, typesById, champs, demographie, surfaces, ventes, onAjouter }) {
+  const typesPdv = useMemo(() => Object.values(typesById).filter((t) => ['point_de_vente', 'client'].includes(t.categorie)).map((t) => t.id), [typesById]);
   const champsDispo = useMemo(() => champsCA(champs, typesPdv), [champs, typesPdv]);
   const [cleCA, setCleCA] = useState('');
   useEffect(() => {
@@ -36,8 +36,8 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   }, []);
 
   const res = useMemo(
-    () => (position ? simuler({ position, rayonKm, points, typesById, demographie, surfaces, grille, cleCA }) : null),
-    [position, rayonKm, points, typesById, demographie, surfaces, grille, cleCA]
+    () => (position ? simuler({ position, rayonKm, points, typesById, demographie, surfaces, grille, ventes, cleCA }) : null),
+    [position, rayonKm, points, typesById, demographie, surfaces, grille, ventes, cleCA]
   );
 
   const niveau = !res ? null : res.cannibalisation < 0.15
@@ -80,7 +80,8 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
             <Carte
               titre="CA mensuel estimé"
               valeur={res.caEstime != null ? `${fmt(res.caEstime)} TND` : '—'}
-              detail={res.caEstime != null ? `Médiane de ${res.nbValeursCA} PDV, ajustée de la cannibalisation` : 'Pas encore de CA saisi sur vos PDV'}
+              detail={res.sourceCA === 'ventes' ? `Ventes réelles de ${res.nbValeursCA} points (12 mois), ajustées de la cannibalisation`
+                : res.sourceCA === 'champ' ? `Médiane de ${res.nbValeursCA} points, ajustée de la cannibalisation` : 'Pas encore de ventes importées'}
               couleur="#5b21b6"
               fond="#f5f3ff"
             />
@@ -109,7 +110,7 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
             </div>
           )}
 
-          {champsDispo.length > 1 && (
+          {res.sourceCA !== 'ventes' && champsDispo.length > 1 && (
             <div>
               <label style={labelStyle}>Champ utilisé comme CA</label>
               <select value={cleCA} onChange={(e) => setCleCA(e.target.value)} style={inputStyle}>
@@ -120,7 +121,7 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
 
           {res.caEstime == null && (
             <Message type="ok">
-              Pour estimer le CA, ajoutez un champ « Nombre » (ex. « CA mensuel ») au type « Point de vente » dans l’onglet Types, puis renseignez-le sur vos points.
+              Pour estimer le CA, importez vos ventes dans l’onglet « Ventes » (export Excel de votre ERP), ou ajoutez un champ « Nombre » « CA mensuel » à vos points.
             </Message>
           )}
 
@@ -137,9 +138,9 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
               Zone : cercle de {km(rayonKm)} autour du point (à vol d’oiseau). Population : somme des habitants des carrés de
               250 m situés dans le cercle, d’après la grille High Resolution Settlement Layer (Meta et CIESIN, licence CC BY 4.0).
               Ménages : population ÷ taille moyenne des ménages du gouvernorat (INS).
-              Cannibalisation : part de la zone déjà à moins de {km(rayonKm)} d’un de vos points de vente validés. CA : médiane du CA
-              de vos points de vente validés × (1 − cannibalisation ÷ 2), car dans la partie déjà couverte la clientèle se partage
-              entre l’ancien et le nouveau point.
+              Cannibalisation : part de la zone déjà à moins de {km(rayonKm)} d’un de vos points (points de vente ou clients) validés.
+              CA : médiane du CA mensuel de vos points validés (moyenne des 12 derniers mois de ventes importées, sinon le champ choisi)
+              × (1 − cannibalisation ÷ 2), car dans la partie déjà couverte la clientèle se partage entre l’ancien et le nouveau point.
             </p>
           </details>
 

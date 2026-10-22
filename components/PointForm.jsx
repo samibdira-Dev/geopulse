@@ -53,6 +53,7 @@ export default function PointForm({
 }) {
   const [typeId, setTypeId] = useState('');
   const [nom, setNom] = useState('');
+  const [codeExterne, setCodeExterne] = useState('');
   const [gouvernorat, setGouvernorat] = useState('');
   const [delegation, setDelegation] = useState('');
   const [adresse, setAdresse] = useState('');
@@ -81,12 +82,14 @@ export default function PointForm({
     if (!editing) return;
     setTypeId(editing.type_id);
     setNom(editing.nom || '');
+    setCodeExterne(editing.code_externe || '');
     setDonnees(editing.donnees || {});
     setError('');
   }, [editing && editing.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const annuler = () => {
     setNom('');
+    setCodeExterne('');
     setDonnees({});
     setError('');
     if (onCancelEdit) onCancelEdit();
@@ -115,6 +118,8 @@ export default function PointForm({
       donnees: nettoyerDonnees(champsType, donnees),
       statut,
     };
+    // Code client de l'ERP : envoyé seulement s'il est utilisé (la colonne arrive avec le script ventes.sql).
+    if (codeExterne.trim() || (editing && editing.code_externe)) row.code_externe = codeExterne.trim() || null;
 
     setSaving(true);
     const requete = editing
@@ -128,6 +133,7 @@ export default function PointForm({
       return setError('Modification refusée : ce point n’est plus modifiable (déjà soumis ou validé).');
     }
     setNom('');
+    setCodeExterne('');
     setDonnees({});
     onSaved(statut);
   };
@@ -175,6 +181,11 @@ export default function PointForm({
       <div>
         <label style={labelStyle}>Nom *</label>
         <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex : Pharmacie du Lac" style={inputStyle} />
+      </div>
+
+      <div>
+        <label style={labelStyle}>Code client (ERP)</label>
+        <input value={codeExterne} onChange={(e) => setCodeExterne(e.target.value)} placeholder="Ex : C00412 — sert à relier les ventes importées" style={inputStyle} />
       </div>
 
       {champsType.map((c) => (

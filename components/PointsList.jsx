@@ -13,7 +13,7 @@ export default function PointsList({ points, typesById, auteurs, userId, role, o
     return points.filter((p) => {
       if (statut !== 'tous' && p.statut !== statut) return false;
       if (portee === 'miens' && p.cree_par !== userId) return false;
-      if (q && !`${p.nom} ${p.gouvernorat || ''} ${p.delegation || ''}`.toLowerCase().includes(q)) return false;
+      if (q && !`${p.nom} ${p.code_externe || ''} ${p.gouvernorat || ''} ${p.delegation || ''}`.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [points, statut, portee, recherche, userId]);
@@ -41,7 +41,7 @@ export default function PointsList({ points, typesById, auteurs, userId, role, o
       <input
         value={recherche}
         onChange={(e) => setRecherche(e.target.value)}
-        placeholder="Rechercher un nom, un quartier…"
+        placeholder="Rechercher un nom, un code client, un quartier…"
         style={{ padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
       />
 

@@ -6,6 +6,7 @@ import L from 'leaflet';
 import { GOUV_COLORS, normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
 
 import { STATUTS, isManagerRole } from '../lib/points';
+import { caMensuelMoyen, evolution } from '../lib/ventes';
 
 // Pastille colorée selon le type du point ; l'anneau indique le statut de validation.
 const RING_BY_STATUT = {
@@ -97,6 +98,7 @@ export default function ProMap({
   selectedGouv,
   view,
   zoneKm = null,         // rayon de la zone simulée autour du point (km)
+  ventes = {},           // id du point -> synthèse des ventes
 }) {
   const [geoData, setGeoData] = useState(null);
 
@@ -206,6 +208,17 @@ export default function ProMap({
                       </div>
                     );
                   })}
+                  {ventes[p.id] && (() => {
+                    const v = ventes[p.id];
+                    const evo = evolution(v);
+                    return (
+                      <div style={{ fontSize: '12px', color: '#334155', marginTop: '4px', background: '#f5f3ff', padding: '4px 6px', borderRadius: '4px' }}>
+                        <b>CA 12 mois :</b> {Math.round(Number(v.ca_12m)).toLocaleString('fr-FR')} TND
+                        {evo != null && <span style={{ color: evo >= 0 ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}> ({evo >= 0 ? '+' : ''}{Math.round(evo * 100)} %)</span>}
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>Moyenne {Math.round(caMensuelMoyen(v) || 0).toLocaleString('fr-FR')} TND / mois{p.code_externe ? ` · code ${p.code_externe}` : ''}</div>
+                      </div>
+                    );
+                  })()}
                   <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
                     Ajouté par {p.cree_par === currentUserId ? 'moi' : (auteurs[p.cree_par] || 'un membre')}
                   </div>

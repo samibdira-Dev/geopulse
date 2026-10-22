@@ -11,6 +11,7 @@ import PointsList from '../../components/PointsList';
 import ValidationPanel from '../../components/ValidationPanel';
 import TeamPanel from '../../components/TeamPanel';
 import TypesAdmin from '../../components/TypesAdmin';
+import VentesImport from '../../components/VentesImport';
 import SimulationPanel from '../../components/SimulationPanel';
 import DemographiePanel from '../../components/DemographiePanel';
 import { surfacesGouvernorats } from '../../lib/simulation';
@@ -37,6 +38,7 @@ export default function ProPage() {
   const [editing, setEditing] = useState(null);
   const [view, setView] = useState(null);
   const [geo, setGeo] = useState(null);
+  const [ventes, setVentes] = useState({}); // id du point -> synthèse des ventes (ventes_resume)
   const [filtreType, setFiltreType] = useState('tous');
   const [info, setInfo] = useState(null);
   const [demographie, setDemographie] = useState([]);
@@ -127,6 +129,10 @@ export default function ProPage() {
     setChamps(c.data || []);
     setPoints(p.data || []);
     setMembres(m.data || []);
+    // Synthèse des ventes : absente tant que le script ventes.sql n'a pas été lancé (on l'ignore alors).
+    const v = await supabase.rpc('ventes_resume', { p_societe: sid });
+    if (num !== requete.current) return;
+    setVentes(Object.fromEntries((v.data || []).map((r) => [r.point_id, r])));
   }, [membership]);
 
   useEffect(() => { charger(); }, [charger]);
@@ -222,7 +228,7 @@ export default function ProPage() {
     ['simuler', '🎯 Simuler'],
     ['points', '📋 Points'],
     ['demographie', '👥 Démographie'],
-    ...(manager ? [['valider', `✅ À valider${aValiderCount ? ` (${aValiderCount})` : ''}`]] : []),
+    ...(manager ? [['valider', `✅ À valider${aValiderCount ? ` (${aValiderCount})` : ''}`], ['ventes', '📈 Ventes']] : []),
     ...(role === 'admin' ? [['types', '🏷️ Types'], ['equipe', '🧑‍🤝‍🧑 Équipe']] : []),
   ];
 
@@ -280,6 +286,7 @@ export default function ProPage() {
               champs={champs}
               demographie={demographie}
               surfaces={surfaces}
+              ventes={ventes}
               onAjouter={() => { setEditing(null); setTab('nouveau'); }}
             />
           )}
@@ -294,6 +301,10 @@ export default function ProPage() {
 
           {tab === 'valider' && manager && (
             <ValidationPanel points={points} typesById={typesById} champsByType={champsByType} auteurs={auteurs} onFocus={focaliser} onChanged={charger} />
+          )}
+
+          {tab === 'ventes' && manager && (
+            <VentesImport societeId={membership.societe_id} points={points} onChanged={charger} />
           )}
 
           {tab === 'types' && role === 'admin' && (
@@ -326,6 +337,7 @@ export default function ProPage() {
           simulatedPoint={position}
           onDragSimulated={(ll) => poser(ll.lat, ll.lng, 'pin_manuel')}
           view={view}
+          ventes={ventes}
           selectedGouv={tab === 'demographie' ? gouvDemo : null}
           zoneKm={tab === 'simuler' && position ? rayonKm : null}
         />
