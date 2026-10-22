@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { champsCA, simuler } from '../lib/simulation';
+import { chargerGrille } from '../lib/population';
 import { Message, labelStyle, inputStyle } from './ui';
 
 const RAYONS = [0.5, 1, 2, 3, 5];
@@ -26,9 +27,17 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     if (!champsDispo.some((c) => c.cle === cleCA)) setCleCA(champsDispo.length ? champsDispo[0].cle : '');
   }, [champsDispo, cleCA]);
 
+  // Grille de population (~1,7 Mo), chargée à la première ouverture du simulateur.
+  const [grille, setGrille] = useState(null);
+  useEffect(() => {
+    let actif = true;
+    chargerGrille().then((g) => { if (actif) setGrille(g); }).catch(() => {});
+    return () => { actif = false; };
+  }, []);
+
   const res = useMemo(
-    () => (position ? simuler({ position, rayonKm, points, typesById, demographie, surfaces, cleCA }) : null),
-    [position, rayonKm, points, typesById, demographie, surfaces, cleCA]
+    () => (position ? simuler({ position, rayonKm, points, typesById, demographie, surfaces, grille, cleCA }) : null),
+    [position, rayonKm, points, typesById, demographie, surfaces, grille, cleCA]
   );
 
   const niveau = !res ? null : res.cannibalisation < 0.15
@@ -83,7 +92,9 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
             <Carte
               titre="Population de la zone"
               valeur={res.population != null ? `${fmt(res.population)} hab.` : '—'}
-              detail={res.population != null ? `${fmt(res.menages)} ménages · ${fmt(res.densite)} hab./km²` : 'Données INS indisponibles'}
+              detail={res.population == null ? 'Données de population indisponibles'
+                : [res.menages != null ? `${fmt(res.menages)} ménages` : null, `${fmt(res.densite)} hab./km²`,
+                  res.sourcePopulation === 'gouvernorat' ? 'moyenne du gouvernorat' : null].filter(Boolean).join(' · ')}
             />
             <Carte
               titre="Concurrents dans la zone"
@@ -123,8 +134,9 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
           <details style={{ fontSize: '11px', color: '#64748b' }}>
             <summary style={{ cursor: 'pointer' }}>Méthode de calcul</summary>
             <p style={{ margin: '6px 0 0', lineHeight: 1.5 }}>
-              Zone : cercle de {km(rayonKm)} autour du point (à vol d’oiseau). Population : densité moyenne du gouvernorat
-              (recensement INS ÷ surface) × surface de la zone ; elle sous-estime les centres-villes et surestime les zones rurales.
+              Zone : cercle de {km(rayonKm)} autour du point (à vol d’oiseau). Population : somme des habitants des carrés de
+              250 m situés dans le cercle, d’après la grille High Resolution Settlement Layer (Meta et CIESIN, licence CC BY 4.0).
+              Ménages : population ÷ taille moyenne des ménages du gouvernorat (INS).
               Cannibalisation : part de la zone déjà à moins de {km(rayonKm)} d’un de vos points de vente validés. CA : médiane du CA
               de vos points de vente validés × (1 − cannibalisation ÷ 2), car dans la partie déjà couverte la clientèle se partage
               entre l’ancien et le nouveau point.
