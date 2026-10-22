@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { champsCA, simuler } from '../lib/simulation';
 import { chargerGrille } from '../lib/population';
-import { calibrerModele, fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
+import { calibrerModele, combinerTests, ecartMethodes, fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
+import { NB_JUMEAUX, estimerParJumeaux, preparerReseau, profilSite, testerJumeaux } from '../lib/jumeaux';
 import { REGLAGE_DEFAUT } from '../lib/simulation';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
 import Icon from './icons';
@@ -56,6 +57,9 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
 
   // Surface du point simulé (m²) : vide = surface médiane de vos points.
   const [surfaceSaisie, setSurfaceSaisie] = useState('');
+  // Type d'exploitation du point étudié (propre, franchise…) : les jumeaux du même type sont préférés.
+  const [typeSaisi, setTypeSaisi] = useState('');
+  const typesExploitation = useMemo(() => typesPdv.map((id) => typesById[id]).filter(Boolean), [typesPdv, typesById]);
 
   // Réglage du modèle sur les ventes (étape 2) puis test « un magasin caché » (étape 1). Ne dépend pas de
   // l'emplacement étudié : recalculé quand les données ou le rayon changent, en tâche de fond, et gardé en
@@ -79,18 +83,35 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     });
     return () => { annule = true; };
   }, [rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA]);
-  const test = calib ? calib.test : undefined;
+
+  // Magasins jumeaux (étape 3) : profil de chaque point du réseau, puis test « un magasin caché » de la méthode.
+  const reseauJ = useMemo(
+    () => preparerReseau({ rayonKm, points, typesById, champs, grille, ventes, cleCA }),
+    [rayonKm, points, typesById, champs, grille, ventes, cleCA]
+  );
+  const testJ = useMemo(() => testerJumeaux(reseauJ), [reseauJ]);
+  const test = calib ? combinerTests(calib.test, testJ) : undefined;
 
   const res = useMemo(
     () => (position && (calib !== undefined || !grille) ? simuler({ position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceNouveau: surfaceSaisie, reglage: calib ? calib.reglage : REGLAGE_DEFAUT }) : null),
     [position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceSaisie, calib]
   );
 
-  const confiance = res && test !== undefined ? noteConfiance(test, res) : null;
-  const plage = confiance && confiance.note !== 'D' ? fourchette(test, res.caEstime) : null;
-  const masque = confiance && confiance.note === 'D' && res.caEstime != null;
-
   const huff = res && res.methodeCA === 'huff';
+  const jum = useMemo(() => {
+    if (!huff || !reseauJ || !testJ) return null;
+    const surface = Number(surfaceSaisie) > 0 ? Number(surfaceSaisie) : reseauJ.surfaceMediane;
+    const profil = profilSite(grille, position.lat, position.lng, rayonKm, reseauJ.concurrents, surface);
+    return estimerParJumeaux(reseauJ, profil, { typeId: typeSaisi || null, theta: testJ.theta });
+  }, [huff, reseauJ, testJ, surfaceSaisie, grille, position, rayonKm, typeSaisi]);
+  // CA central : moyenne des deux méthodes quand les jumeaux sont disponibles.
+  const caCentral = !res ? null : jum && res.caEstime != null ? Math.round((res.caEstime + jum.estime) / 2) : res.caEstime;
+  const ecart = jum ? ecartMethodes(res.caEstime, jum.estime) : null;
+  const confiance = res && test !== undefined ? noteConfiance(test, { ...res, caEstime: caCentral }, jum ? { ecart, tresProches: jum.tresProches } : null) : null;
+  const plage = confiance && confiance.note !== 'D' ? fourchette(test, caCentral, jum ? [res.caEstime, jum.estime] : []) : null;
+  const masque = confiance && confiance.note === 'D' && caCentral != null;
+  const nomType = (id) => (typesById[id] || {}).nom || '';
+
   const tauxCannib = !res ? 0 : huff ? res.cannibalisationCA : res.cannibalisation;
   const niveau = !res ? null : tauxCannib < 0.15
     ? { label: 'Faible', color: '#16a34a' }
@@ -119,6 +140,16 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
           placeholder={res && res.surfaceMediane ? `${fmt(res.surfaceMediane)} m² (médiane de vos points)` : 'Surface en m²'} style={inputStyle} />
       </div>
 
+      {typesExploitation.length > 1 && (
+        <div>
+          <label style={labelStyle}>Type d’exploitation du point étudié</label>
+          <select value={typeSaisi} onChange={(e) => setTypeSaisi(e.target.value)} style={inputStyle}>
+            <option value="">Indifférent</option>
+            {typesExploitation.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
+          </select>
+        </div>
+      )}
+
       {!position && (
         <Empty icon="crosshair">Aucun emplacement sélectionné.<br />Cliquez sur la carte pour lancer l’étude.</Empty>
       )}
@@ -143,16 +174,29 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
               {confiance && <NoteBadge note={confiance.note} />}
             </div>
             <div className="num" style={{ fontSize: '34px', fontWeight: 800, letterSpacing: '-.03em', marginTop: '4px' }}>
-              {res.caEstime != null && !masque ? fmt(res.caEstime) : '—'}<span style={{ fontSize: '15px', fontWeight: 600, color: '#c7d2fe', marginLeft: '6px' }}>TND</span>
+              {caCentral != null && !masque ? fmt(caCentral) : '—'}<span style={{ fontSize: '15px', fontWeight: 600, color: '#c7d2fe', marginLeft: '6px' }}>TND</span>
             </div>
             {plage && (
               <div className="num" style={{ fontSize: '12.5px', color: '#e0e7ff', fontWeight: 500 }}>
                 Probablement entre <b>{fmt(plage.bas)}</b> et <b>{fmt(plage.haut)}</b> TND
               </div>
             )}
+            {jum && !masque && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '10px', position: 'relative' }}>
+                {[['Modèle gravitaire', res.caEstime], ['Magasins jumeaux', jum.estime]].map(([l, v]) => (
+                  <div key={l} style={{ background: 'rgba(255,255,255,.07)', border: '1px solid rgba(255,255,255,.10)', borderRadius: '10px', padding: '7px 10px' }}>
+                    <div style={{ fontSize: '10.5px', color: '#a5b4fc', fontWeight: 600 }}>{l}</div>
+                    <div className="num" style={{ fontSize: '15px', fontWeight: 700 }}>{fmt(v)} <span style={{ fontSize: '11px', color: '#c7d2fe', fontWeight: 600 }}>TND</span></div>
+                  </div>
+                ))}
+                <div style={{ gridColumn: '1 / -1', fontSize: '11.5px', color: ecart < 0.1 ? '#6ee7b7' : ecart < 0.2 ? '#e0e7ff' : '#fcd34d', fontWeight: 500 }}>
+                  {ecart < 0.1 ? 'Les deux méthodes concordent' : ecart < 0.2 ? 'Les deux méthodes sont proches' : 'Les deux méthodes divergent'} : écart de {Math.round(ecart * 100)} %
+                </div>
+              </div>
+            )}
             <div style={{ fontSize: '11.5px', color: '#c7d2fe', lineHeight: 1.5, marginTop: '4px', maxWidth: '300px' }}>
               {huff
-                ? [res.caParM2 != null ? `${fmt(res.caParM2)} TND/m²` : null, `${fmt(res.habitantsCaptes)} habitants captés`,
+                ? [caCentral != null && res.surfaceNouveau ? `${fmt(caCentral / res.surfaceNouveau)} TND/m²` : null, `${fmt(res.habitantsCaptes)} habitants captés`,
                   `${(Math.round(res.caParHabitant * 100) / 100).toLocaleString('fr-FR')} TND/hab./mois (${res.sourceCA === 'ventes' ? 'ventes' : 'CA'} de ${res.nbValeursCA} points)`].filter(Boolean).join(' · ')
                 : res.sourceCA === 'ventes' ? `Ventes réelles de ${res.nbValeursCA} points (12 mois), ajustées de la cannibalisation`
                 : res.sourceCA === 'champ' ? `Médiane de ${res.nbValeursCA} points, ajustée de la cannibalisation` : 'Pas encore de ventes importées'}
@@ -167,7 +211,8 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   <div style={{ fontSize: '13px', fontWeight: 600, color: C.text }}>{confiance.label}</div>
                   <div style={{ fontSize: '11.5px', color: C.muted }}>
                     {test && test.n >= 3 && test.erreurMediane != null
-                      ? `Modèle testé sur ${test.n} de vos points : écart médian de ${Math.round(test.erreurMediane * 100)} % entre estimation et ventes réelles`
+                      ? `Testé sur ${test.n} de vos points : écart médian de ${Math.round(test.erreurMediane * 100)} % entre estimation et ventes réelles`
+                        + (test.erreurJumeaux != null ? ` (modèle gravitaire seul ${Math.round(test.erreurGravitaire * 100)} %, jumeaux seuls ${Math.round(test.erreurJumeaux * 100)} %)` : '')
                       : 'Pas assez de points avec un CA connu pour tester le modèle'}
                   </div>
                 </div>
@@ -175,7 +220,7 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
               {calib && calib.testDefaut && calib.reglage !== REGLAGE_DEFAUT && (
                 <div style={{ fontSize: '11.5px', color: C.success, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Icon name="checkCircle" size={14} />
-                  Modèle réglé sur vos ventes : écart ramené de {Math.round(calib.testDefaut.erreurMediane * 100)} % à {Math.round(calib.test.erreurMediane * 100)} %
+                  Modèle gravitaire réglé sur vos ventes : écart ramené de {Math.round(calib.testDefaut.erreurMediane * 100)} % à {Math.round(calib.test.erreurMediane * 100)} %
                 </div>
               )}
               {(confiance.conseil || masque) && <div style={{ fontSize: '11.5px', color: C.warning }}>{masque ? 'CA non affiché : ' : ''}{confiance.conseil}</div>}
@@ -193,6 +238,33 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   </div>
                 </details>
               )}
+            </div>
+          )}
+
+          {jum && (
+            <div style={{ ...carte, padding: '13px 14px' }}>
+              <div style={{ ...surtitre, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="store" size={13} />Magasins jumeaux</div>
+              <div style={{ fontSize: '12.5px', color: C.body, margin: '6px 0 4px', lineHeight: 1.5 }}>
+                Ce site ressemble à <b style={{ color: C.text }}>{jum.jumeaux.map((j) => j.nom).join(', ').replace(/, ([^,]*)$/, ' et $1')}</b>.
+              </div>
+              {jum.jumeaux.map((j) => (
+                <div key={j.id} style={{ borderTop: '1px solid ' + C.line, padding: '8px 0 6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: 600, color: C.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.nom}</span>
+                    <span className="num" style={{ fontSize: '12.5px', fontWeight: 700, color: C.text }}>{fmt(j.ca)} TND</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                    <div style={{ flex: 1, height: '4px', borderRadius: '4px', background: '#eef0f4', overflow: 'hidden' }}>
+                      <div style={{ width: j.ressemblance + '%', height: '100%', borderRadius: '4px', background: j.ressemblance >= 75 ? C.success : j.ressemblance >= 50 ? C.brand : C.warning }} />
+                    </div>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: C.muted, whiteSpace: 'nowrap' }}>ressemblance {j.ressemblance} %</span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: C.muted, marginTop: '3px' }}>
+                    {[nomType(j.type_id), `${fmt(j.profil.surface)} m²`, `${fmt(j.profil.pop1)} hab. à 1 km`, `${fmt(j.profil.pop3)} à 3 km`].filter(Boolean).join(' · ')}
+                    {Math.round(j.caAjuste) !== Math.round(j.ca) ? ` · ${fmt(j.caAjuste)} TND à votre surface` : ''}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -276,9 +348,17 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   rapporte un peu moins). Ces valeurs sont choisies automatiquement parmi 64 combinaisons, celle qui donne le plus petit
                   écart au test sur vos ventes ; avec moins de 8 points testés, on garde α = 1, β = 2, γ = 1. Cannibalisation : CA que le point étudié prend à vos points voisins, en part de son CA.
                   Surface inconnue : surface médiane de vos points.
+                  {jum && (
+                    <>
+                      {' '}Magasins jumeaux : on compare le site à vos points sur les habitants à 1 km et à 3 km, les m² concurrents pour
+                      1 000 habitants dans la zone, la surface et le type d’exploitation, puis on retient les {NB_JUMEAUX} plus ressemblants.
+                      Leur CA, ajusté de l’écart de surface (exposant {fmtReglage(testJ.theta)}, choisi sur vos ventes), est moyenné en donnant
+                      plus de poids aux plus ressemblants. Le CA affiché est la moyenne des deux méthodes.
+                    </>
+                  )}
                   {' '}Fiabilité : chacun de vos points ayant un CA connu est retiré à son tour et estimé à partir des autres ;
                   l’écart médian avec ses ventes réelles mesure la précision du modèle sur votre réseau. La fourchette couvre 80 % des écarts
-                  observés. Note A : au moins 15 points testés et écart médian sous 15 % ; B : 8 points et 25 % ; C : au-delà ;
+                  observés{jum ? ', élargie pour contenir le CA de chaque méthode' : ''}. Note A : au moins 15 points testés, écart médian sous 15 %{jum ? ', 3 jumeaux ressemblants à 75 % et plus, méthodes à moins de 10 % d’écart' : ''} ; B : 8 points et 25 %{jum ? ', méthodes à moins de 20 %' : ''} ; C : au-delà ;
                   D : moins de 5 points, pas de chiffre. Le site doit aussi avoir une densité de population proche de celles de votre réseau.
                 </>
               ) : (
