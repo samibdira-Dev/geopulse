@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { champsDuType, traduireErreur } from '../lib/points';
+import { PARAMS_EXPLOITATION } from '../lib/rentabilite';
 import { btn, ghostBtn, inputStyle, labelStyle, Message, SectionTitle } from './ui';
 
 const CATEGORIES = {
@@ -17,6 +18,39 @@ function slug(libelle) {
   const s = String(libelle || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   const k = /^[a-z]/.test(s) ? s : 'c_' + s;
   return k.slice(0, 40);
+}
+
+// Paramètres d'exploitation d'un type de point de vente (marge, salaires, charges…), pour le calcul de rentabilité.
+function ExploitationForm({ type, busy, onSave }) {
+  const initial = () => Object.fromEntries(PARAMS_EXPLOITATION.map((f) => [f.cle, (type.exploitation || {})[f.cle] ?? '']));
+  const [valeurs, setValeurs] = useState(initial);
+  const enregistrer = (e) => {
+    e.preventDefault();
+    const exploitation = {};
+    PARAMS_EXPLOITATION.forEach((f) => {
+      const v = String(valeurs[f.cle]).replace(',', '.').trim();
+      if (v !== '' && Number.isFinite(Number(v))) exploitation[f.cle] = Number(v);
+    });
+    onSave(exploitation);
+  };
+  return (
+    <form onSubmit={enregistrer} style={{ borderTop: '1px dashed #d5d9e3', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div style={{ fontWeight: 600, fontSize: '13px', color: '#0f172a' }}>Paramètres d’exploitation</div>
+      <div style={{ fontSize: '11.5px', color: '#64748b', lineHeight: 1.45 }}>
+        Servent au calcul de rentabilité du simulateur (point mort, délai de retour). Le loyer et l’investissement se saisissent pour chaque site étudié.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+        {PARAMS_EXPLOITATION.map((f) => (
+          <div key={f.cle}>
+            <label style={{ ...labelStyle, fontSize: '11px' }}>{f.libelle} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({f.unite})</span></label>
+            <input inputMode="decimal" value={valeurs[f.cle]} onChange={(e) => setValeurs({ ...valeurs, [f.cle]: e.target.value })}
+              placeholder={f.defaut != null ? String(f.defaut) : ''} style={inputStyle} />
+          </div>
+        ))}
+      </div>
+      <button type="submit" disabled={busy} style={btn(undefined, busy)}>Enregistrer les paramètres</button>
+    </form>
+  );
 }
 
 // Réservé aux administrateurs : types de points et champs personnalisés de la société.
@@ -108,7 +142,7 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
                 <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>{t.nom}{t.actif ? '' : ' (désactivé)'}</div>
                 <div style={{ fontSize: '11px', color: '#64748b' }}>{CATEGORIES[t.categorie] || t.categorie} · {cs.length} champ(s)</div>
               </div>
-              <button type="button" onClick={() => setOuvert(est ? null : t.id)} style={ghostBtn}>{est ? 'Fermer' : 'Champs'}</button>
+              <button type="button" onClick={() => setOuvert(est ? null : t.id)} style={ghostBtn}>{est ? 'Fermer' : ['point_de_vente', 'client'].includes(t.categorie) ? 'Champs et exploitation' : 'Champs'}</button>
             </div>
 
             {est && (
@@ -142,6 +176,13 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
                   </label>
                   <button type="submit" disabled={busy || !champ.libelle.trim()} style={btn(undefined, busy || !champ.libelle.trim())}>Ajouter le champ</button>
                 </form>
+
+                {['point_de_vente', 'client'].includes(t.categorie) && (
+                  <ExploitationForm type={t} busy={busy} onSave={(exploitation) => executer(
+                    supabase.from('types_point').update({ exploitation }).eq('id', t.id).eq('societe_id', societeId),
+                    'Paramètres d’exploitation enregistrés.'
+                  )} />
+                )}
 
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   <button type="button" onClick={() => majType(t, { actif: !t.actif })} style={ghostBtn}>{t.actif ? 'Désactiver ce type' : 'Réactiver ce type'}</button>

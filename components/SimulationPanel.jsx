@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { champsCA, simuler } from '../lib/simulation';
 import { chargerGrille } from '../lib/population';
 import { calibrerModele, combinerTests, ecartMethodes, fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
+import { calculerRentabilite, parametresDuType } from '../lib/rentabilite';
 import { NB_JUMEAUX, estimerParJumeaux, preparerReseau, profilSite, testerJumeaux } from '../lib/jumeaux';
 import { REGLAGE_DEFAUT } from '../lib/simulation';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
@@ -59,6 +60,9 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   const [surfaceSaisie, setSurfaceSaisie] = useState('');
   // Type d'exploitation du point étudié (propre, franchise…) : les jumeaux du même type sont préférés.
   const [typeSaisi, setTypeSaisi] = useState('');
+  // Loyer et investissement d'ouverture du site étudié (étape 4 : rentabilité).
+  const [loyer, setLoyer] = useState('');
+  const [investissement, setInvestissement] = useState('');
   const typesExploitation = useMemo(() => typesPdv.map((id) => typesById[id]).filter(Boolean), [typesPdv, typesById]);
 
   // Réglage du modèle sur les ventes (étape 2) puis test « un magasin caché » (étape 1). Ne dépend pas de
@@ -111,6 +115,22 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   const plage = confiance && confiance.note !== 'D' ? fourchette(test, caCentral, jum ? [res.caEstime, jum.estime] : []) : null;
   const masque = confiance && confiance.note === 'D' && caCentral != null;
   const nomType = (id) => (typesById[id] || {}).nom || '';
+
+  // Rentabilité : paramètres du type choisi, sinon du premier type de point de vente qui en a.
+  const typeRenta = typeSaisi ? typesById[typeSaisi] : typesExploitation.find((t) => parametresDuType(t)) || typesExploitation[0];
+  const paramsRenta = parametresDuType(typeRenta);
+  const renta = res && !masque && caCentral != null ? calculerRentabilite({
+    p: paramsRenta,
+    ca: caCentral,
+    surface: res.surfaceNouveau,
+    loyer: Number(loyer) || 0,
+    investissement: Number(investissement) || 0,
+    caBas: plage ? plage.bas : null,
+    transfert: huff ? res.transfert : null,
+  }) : null;
+  const solidite = !renta || renta.margeSecurite == null ? null
+    : renta.margeSecurite >= 0.25 ? { label: 'Solide', color: C.success }
+    : renta.margeSecurite >= 0 ? { label: 'Fragile', color: C.warning } : { label: 'Sous le point mort', color: C.danger };
 
   const tauxCannib = !res ? 0 : huff ? res.cannibalisationCA : res.cannibalisation;
   const niveau = !res ? null : tauxCannib < 0.15
@@ -237,6 +257,86 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                     ])}
                   </div>
                 </details>
+              )}
+            </div>
+          )}
+
+          {res && caCentral != null && !masque && (
+            <div style={{ ...carte, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ ...surtitre, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="wallet" size={13} />Rentabilité</div>
+                {solidite && <span style={{ fontSize: '11px', fontWeight: 700, color: solidite.color, background: solidite.color + '14', padding: '3px 9px', borderRadius: '999px' }}>{solidite.label}</span>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <label style={{ ...labelStyle, fontSize: '11px' }}>Loyer (TND/mois)</label>
+                  <input type="number" min="0" value={loyer} onChange={(e) => setLoyer(e.target.value)} placeholder="Ex : 6 500" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ ...labelStyle, fontSize: '11px' }}>Investissement (TND)</label>
+                  <input type="number" min="0" value={investissement} onChange={(e) => setInvestissement(e.target.value)} placeholder="Travaux, équipement, stock" style={inputStyle} />
+                </div>
+              </div>
+              {!paramsRenta && (
+                <div style={{ fontSize: '11.5px', color: C.warning, lineHeight: 1.5 }}>
+                  Renseignez le taux de marge brute du type « {typeRenta ? typeRenta.nom : 'point de vente'} » dans l’onglet Types (administrateur) pour calculer le point mort et le délai de retour.
+                </div>
+              )}
+              {renta && (
+                <>
+                  <div>
+                    <div style={{ fontSize: '11.5px', color: C.muted }}>Résultat d’exploitation mensuel en croisière</div>
+                    <div className="num" style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '-.02em', color: renta.ebitda >= 0 ? C.text : C.danger }}>{fmt(renta.ebitda)} <span style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}>TND</span></div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {[
+                      ['CA point mort', renta.pointMort != null ? `${fmt(renta.pointMort)} TND` : '—', null],
+                      ['Marge de sécurité', renta.margeSecurite != null ? `${Math.round(renta.margeSecurite * 100)} %` : '—', solidite && solidite.color],
+                      ['Délai de retour', renta.delai != null ? `${renta.delai} mois` : renta.delaiDepasse ? 'plus de 10 ans' : 'saisir l’investissement', renta.delaiDepasse ? C.danger : null],
+                      ['Taux d’effort', renta.tauxEffort != null ? `${(Math.round(renta.tauxEffort * 1000) / 10).toLocaleString('fr-FR')} %` : 'saisir le loyer',
+                        renta.tauxEffort != null && renta.tauxEffortMax != null && renta.tauxEffort > renta.tauxEffortMax ? C.danger : null],
+                    ].map(([l, v, c]) => (
+                      <div key={l} style={{ background: C.bg, borderRadius: '10px', padding: '8px 10px' }}>
+                        <div style={{ fontSize: '10.5px', color: C.muted, fontWeight: 600 }}>{l}</div>
+                        <div className="num" style={{ fontSize: '14px', fontWeight: 700, color: c || C.text }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: C.body, lineHeight: 1.5 }}>
+                    {renta.margeSecurite != null && renta.margeSecurite > 0
+                      ? `Le point reste rentable tant que son CA ne baisse pas de plus de ${Math.round(renta.margeSecurite * 100)} % par rapport à l’estimation.`
+                      : 'Au CA estimé, le point ne couvre pas ses charges.'}
+                    {renta.ebitdaBas != null && plage ? ` Au bas de la fourchette (${fmt(plage.bas)} TND), le résultat serait de ${fmt(renta.ebitdaBas)} TND/mois.` : ''}
+                    {renta.tauxEffort != null && renta.tauxEffortMax != null && renta.tauxEffort > renta.tauxEffortMax ? ` Loyer trop lourd : au-dessus de votre seuil de ${Math.round(renta.tauxEffortMax * 100)} % du CA.` : ''}
+                  </div>
+                  {renta.gainReseau != null && res.transfert > 0 && (
+                    <div style={{ fontSize: '11.5px', color: C.body }}>
+                      Gain net pour le réseau, après la marge perdue sur vos points voisins : <b className="num" style={{ color: renta.gainReseau >= 0 ? C.success : C.danger }}>{fmt(renta.gainReseau)} TND/mois</b>
+                    </div>
+                  )}
+                  <details style={{ fontSize: '11.5px', color: C.muted }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 600, color: C.body }}>Compte d’exploitation mensuel</summary>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: '3px', marginTop: '6px' }}>
+                      {[
+                        ['CA estimé', caCentral],
+                        [`Marge brute (${(Math.round(paramsRenta.marge * 1000) / 10).toLocaleString('fr-FR')} %)`, renta.marge],
+                        ...(renta.redevance ? [['− Redevance', renta.redevance]] : []),
+                        ['− Loyer', renta.loyer],
+                        [`− Salaires (${fmt(res.surfaceNouveau)} m²)`, renta.salaires],
+                        ['− Autres charges fixes', renta.chargesFixes],
+                      ].map(([l, v]) => [
+                        <span key={l}>{l}</span>,
+                        <span key={l + 'v'} className="num" style={{ textAlign: 'right' }}>{fmt(v)}</span>,
+                      ])}
+                      <b style={{ color: C.text, borderTop: '1px solid ' + C.line, paddingTop: '3px' }}>= Résultat d’exploitation</b>
+                      <b className="num" style={{ color: C.text, textAlign: 'right', borderTop: '1px solid ' + C.line, paddingTop: '3px' }}>{fmt(renta.ebitda)}</b>
+                    </div>
+                    <div style={{ marginTop: '6px', lineHeight: 1.5 }}>
+                      Paramètres du type « {typeRenta.nom} ». Délai de retour avec montée en charge : {Math.round(paramsRenta.montee1 * 100)} % du CA le 1er mois,
+                      {' '}{Math.round(paramsRenta.montee6 * 100)} % le 6e, 100 % à partir du 12e.
+                    </div>
+                  </details>
+                </>
               )}
             </div>
           )}
