@@ -48,6 +48,19 @@ export default function ProPage() {
   const [gouvDemo, setGouvDemo] = useState('Tous');
   const [fond, setFond] = useState('clair'); // fond de carte : clair, plan ou satellite
   const requete = useRef(0);
+  // Téléphone : carte plein écran, onglets en bas, panneau fermé, à moitié ou en plein écran.
+  const [mobile, setMobile] = useState(false);
+  const [feuille, setFeuille] = useState('ferme');
+  const [legendeOuverte, setLegendeOuverte] = useState(false);
+  const debutGlisse = useRef(null);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 800px)');
+    const maj = () => setMobile(mq.matches);
+    maj();
+    mq.addEventListener('change', maj);
+    return () => mq.removeEventListener('change', maj);
+  }, []);
+  const ouvrirFeuille = () => setFeuille((f) => (f === 'ferme' ? 'demi' : f));
 
   const userId = session ? session.user.id : null;
   const role = membership ? membership.role : 'commercial';
@@ -185,6 +198,7 @@ export default function ProPage() {
     const base = { lat, lng, gouvernorat: gouvernoratAt(geo, lat, lng), quartier: '', adresse: '', source, precision };
     setPosition(base);
     setTab((t) => (t === 'nouveau' || t === 'simuler' ? t : 'nouveau'));
+    ouvrirFeuille();
     const a = await adresseAt(lat, lng);
     setPosition((cur) => (cur && cur.lat === lat && cur.lng === lng ? { ...cur, quartier: a.quartier, adresse: a.adresse } : cur));
   }, [geo]);
@@ -208,10 +222,29 @@ export default function ProPage() {
     setEditing(p);
     setPosition({ lat: p.latitude, lng: p.longitude, gouvernorat: p.gouvernorat || '', quartier: p.delegation || '', adresse: p.adresse || '', source: p.source_position, precision: p.precision_m });
     setTab('nouveau');
+    ouvrirFeuille();
     setView({ center: [p.latitude, p.longitude], zoom: 15 });
   }, []);
 
-  const focaliser = (p) => setView({ center: [p.latitude, p.longitude], zoom: 16 });
+  // Sur téléphone, on ferme le panneau pour montrer le point sur la carte.
+  const focaliser = (p) => { setFeuille('ferme'); setView({ center: [p.latitude, p.longitude], zoom: 16 }); };
+
+  // Onglet touché : l'onglet ouvert referme le panneau (téléphone), un autre l'ouvre.
+  const choisirOnglet = (k) => {
+    if (k === tab && feuille !== 'ferme') setFeuille('ferme');
+    else { setTab(k); ouvrirFeuille(); }
+  };
+  // Poignée du panneau : glisser vers le haut l'agrandit, vers le bas le réduit ; un appui alterne.
+  const ORDRE_FEUILLE = ['ferme', 'demi', 'plein'];
+  const finGlisse = (e) => {
+    if (debutGlisse.current == null) return;
+    const d = e.clientY - debutGlisse.current;
+    debutGlisse.current = null;
+    const i = ORDRE_FEUILLE.indexOf(feuille);
+    if (d < -30) setFeuille(ORDRE_FEUILLE[Math.min(2, i + 1)]);
+    else if (d > 30) setFeuille(ORDRE_FEUILLE[Math.max(0, i - 1)]);
+    else setFeuille(feuille === 'demi' ? 'plein' : 'demi');
+  };
 
   const supprimer = async (p) => {
     if (!window.confirm(`Supprimer « ${p.nom} » ?`)) return;
@@ -258,14 +291,14 @@ export default function ProPage() {
   const initiales = ((membership.nom_affiche || email).match(/[A-Za-zÀ-ÿ]/g) || ['?']).slice(0, 2).join('').toUpperCase();
 
   return (
-    <div className="pro-layout" style={{ display: 'flex', height: '100vh', background: C.bg }}>
+    <div className={'pro-layout feuille-' + feuille} style={{ display: 'flex', height: '100vh', background: C.bg }}>
       <aside className="pro-side" style={{ flex: 'none', height: '100%', display: 'flex', boxShadow: '1px 0 0 ' + C.line, zIndex: 2 }}>
         {/* Rail de navigation */}
         <div className="pro-rail" style={{ width: '84px', background: C.ink, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 10px', gap: '18px', boxSizing: 'border-box' }}>
           <div className="gp-rail-logo"><Logo size={40} /></div>
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
             {onglets.map(([k, icone, label, badge]) => (
-              <button key={k} type="button" onClick={() => setTab(k)} title={label.replace('\u00AD', '')}
+              <button key={k} type="button" onClick={() => choisirOnglet(k)} title={label.replace('\u00AD', '')}
                 className={'gp-rail-item' + (tab === k ? ' actif' : '')}
                 style={{ position: 'relative', border: 'none', background: undefined, borderRadius: '12px', padding: '9px 2px 8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', minWidth: '62px' }}>
                 <Icon name={icone} size={20} />
@@ -286,6 +319,17 @@ export default function ProPage() {
 
         {/* Panneau de l'onglet */}
         <div className="pro-panel" style={{ width: '400px', display: 'flex', flexDirection: 'column', background: 'white', minHeight: 0 }}>
+          {/* Téléphone : poignée du panneau, avec le nom de l'onglet */}
+          <div className="gp-poignee" onPointerDown={(e) => { debutGlisse.current = e.clientY; }} onPointerUp={finGlisse}
+            style={{ flex: 'none', flexDirection: 'column', alignItems: 'center', gap: '6px', padding: '8px 16px 10px', cursor: 'grab', touchAction: 'none', borderBottom: '1px solid ' + C.line }}>
+            <span style={{ width: '40px', height: '5px', borderRadius: '3px', background: '#d5d9e3' }} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', fontSize: '14px', fontWeight: 700, color: C.text }}>
+              <span>{(onglets.find(([k]) => k === tab) || [, , ''])[2].replace('\u00AD', '')}</span>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: C.brand }}>
+                {feuille === 'ferme' ? (tab === 'nouveau' || tab === 'simuler' ? 'Touchez la carte ou glissez ↑' : 'Glissez ↑') : feuille === 'demi' ? 'Agrandir ↑' : 'Réduire ↓'}
+              </span>
+            </div>
+          </div>
           <header style={{ padding: '16px 20px', borderBottom: '1px solid ' + C.line, display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: C.bg, border: '1px solid ' + C.line, color: C.text, fontWeight: 800, fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
               {(societe && societe.nom ? societe.nom : 'S').slice(0, 1).toUpperCase()}
@@ -303,6 +347,9 @@ export default function ProPage() {
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</span>
               </div>
             </div>
+            <button type="button" onClick={deconnexion} title="Se déconnecter" className="gp-mobile-seul" style={{ border: '1px solid ' + C.line, background: 'white', borderRadius: '10px', padding: '8px', cursor: 'pointer', color: C.muted, flex: 'none' }}>
+              <Icon name="logout" size={17} />
+            </button>
           </header>
 
           <div className="gp-scroll" style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -372,8 +419,8 @@ export default function ProPage() {
 
       <section className="pro-map" style={{ flex: 1, position: 'relative', minWidth: 0 }}>
         {/* Barre d'outils de la carte */}
-        <div style={{ position: 'absolute', top: '16px', left: '16px', right: '16px', zIndex: 1000, display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'space-between', pointerEvents: 'none' }}>
-          <div className="gp-glass" style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 14px', borderRadius: '14px', pointerEvents: 'auto' }}>
+        <div className="gp-outils" style={{ position: 'absolute', top: '16px', left: '16px', right: '16px', zIndex: 1000, display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'space-between', pointerEvents: 'none' }}>
+          <div className="gp-glass gp-stats" style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 14px', borderRadius: '14px', pointerEvents: 'auto' }}>
             <Stat valeur={stats.reseau} label="points du réseau" />
             <span style={{ width: 1, alignSelf: 'stretch', background: C.line }} />
             <Stat valeur={stats.concurrents} label="concurrents" />
@@ -391,14 +438,19 @@ export default function ProPage() {
               ))}
             </div>
             <button type="button" onClick={() => setView({ reset: true })} className="gp-glass" style={{ border: 'none', borderRadius: '12px', padding: '9px 13px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', gap: '7px' }}>
-              <Icon name="crosshair" size={15} /> Tunisie
+              <Icon name="crosshair" size={15} /> <span className="gp-texte-large">Tunisie</span>
             </button>
+            {types.length > 0 && (
+              <button type="button" onClick={() => setLegendeOuverte(!legendeOuverte)} className="gp-glass gp-legende-btn" style={{ border: 'none', borderRadius: '12px', padding: '8px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: legendeOuverte ? C.brand : C.text, alignItems: 'center', gap: '6px' }}>
+                <Icon name="layers" size={15} />{filtreTypes.length ? ` ${filtreTypes.length}` : ''}
+              </button>
+            )}
           </div>
         </div>
 
         {/* Légende : un clic ajoute ou retire un type de la carte ; « Tous les types » les réaffiche tous */}
         {types.length > 0 && (
-          <div className="gp-glass gp-legend" style={{ position: 'absolute', left: '16px', bottom: '24px', zIndex: 1000, borderRadius: '14px', padding: '10px', minWidth: '200px' }}>
+          <div className={'gp-glass gp-legend' + (legendeOuverte ? ' ouverte' : '')} style={{ position: 'absolute', left: '16px', bottom: '24px', zIndex: 1000, borderRadius: '14px', padding: '10px', minWidth: '200px' }}>
             <div style={{ ...surtitre, padding: '2px 8px 6px', display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="layers" size={13} /> Légende</div>
             {[{ id: 'tous', nom: 'Tous les types', couleur: null }, ...types].map((t) => {
               const actif = t.id === 'tous' ? !filtreTypes.length : filtreTypes.includes(t.id);
@@ -429,6 +481,8 @@ export default function ProPage() {
           view={view}
           ventes={ventes}
           fond={fond}
+          onFondIndisponible={() => setFond('plan')}
+          compact={mobile}
           selectedGouv={tab === 'demographie' ? gouvDemo : null}
           zoneKm={tab === 'simuler' && position ? rayonKm : null}
         />

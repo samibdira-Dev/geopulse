@@ -5,6 +5,9 @@ export const metadata = {
   description: 'Solution de géomarketing et d’optimisation de réseaux de points de vente en Tunisie',
 }
 
+// Téléphone : la page occupe tout l'écran, y compris sous l'encoche (marges gérées en CSS).
+export const viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' }
+
 export default function RootLayout({ children }) {
   return (
     <html lang="fr">

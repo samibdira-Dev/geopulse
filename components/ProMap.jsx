@@ -16,11 +16,13 @@ const RING_BY_STATUT = {
   brouillon: { color: '#64748b', dashArray: '3 3' },
   rejete: { color: '#dc2626', dashArray: null },
 };
-function styleDuPoint(color, statut) {
+// Points plus petits sur téléphone (compact), sinon le réseau devient une seule tache à l'échelle du pays.
+function styleDuPoint(color, statut, compact) {
   const ring = RING_BY_STATUT[statut] || RING_BY_STATUT.valide;
-  return { radius: 7.5, color: ring.color, weight: 2.5, dashArray: ring.dashArray, fillColor: color, fillOpacity: statut === 'brouillon' ? 0.6 : 1, opacity: 1 };
+  return { radius: compact ? 5 : 7.5, color: ring.color, weight: compact ? 1.8 : 2.5, dashArray: ring.dashArray, fillColor: color, fillOpacity: statut === 'brouillon' ? 0.6 : 1, opacity: 1 };
 }
 const OMBRE = { radius: 10, stroke: false, fillColor: '#0f172a', fillOpacity: 0.16 };
+const OMBRE_COMPACTE = { ...OMBRE, radius: 6.5 };
 
 // Emplacement étudié : repère violet avec une onde qui pulse.
 const simIcon = L.divIcon({
@@ -40,9 +42,12 @@ const simIcon = L.divIcon({
 
 // Fonds de carte proposés (bouton « Clair / Plan / Satellite »).
 const FONDS = {
+  // CARTO exige désormais une clé : fond gris clair d'Esri, avec ses noms de lieux par-dessus.
   clair: {
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    labels: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Fond &copy; Esri, HERE, Garmin, &copy; OpenStreetMap',
+    maxNativeZoom: 16,
   },
   plan: {
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -114,6 +119,8 @@ export default function ProMap({
   zoneKm = null,         // rayon de la zone simulée autour du point (km)
   ventes = {},           // id du point -> synthèse des ventes
   fond = 'clair',        // fond de carte : clair, plan ou satellite
+  onFondIndisponible,    // appelé si les tuiles du fond ne se chargent pas (on passe alors au plan)
+  compact = false,       // téléphone : points plus petits, pas de boutons de zoom
 }) {
   const [geoData, setGeoData] = useState(null);
 
@@ -182,8 +189,8 @@ export default function ProMap({
     return [...points].sort((a, b) => rang(a) - rang(b));
   }, [points, typesById]);
   const ombres = useMemo(
-    () => ordonnes.map((p) => <CircleMarker key={'o' + p.id} center={[p.latitude, p.longitude]} pathOptions={OMBRE} interactive={false} />),
-    [ordonnes]
+    () => ordonnes.map((p) => <CircleMarker key={'o' + p.id} center={[p.latitude, p.longitude]} pathOptions={compact ? OMBRE_COMPACTE : OMBRE} interactive={false} />),
+    [ordonnes, compact]
   );
   const marqueurs = useMemo(() => ordonnes.map((p) => {
     const type = typesById[p.type_id] || { nom: 'Type inconnu', couleur: '#3b82f6' };
@@ -195,7 +202,7 @@ export default function ProMap({
       <CircleMarker
         key={p.id}
         center={[p.latitude, p.longitude]}
-        pathOptions={styleDuPoint(type.couleur, p.statut)}
+        pathOptions={styleDuPoint(type.couleur, p.statut, compact)}
       >
         <Popup minWidth={250} maxWidth={290}>
           <div style={{ fontFamily: 'inherit', lineHeight: 1.45, minWidth: '230px', color: '#334155' }}>
@@ -256,7 +263,16 @@ export default function ProMap({
         </Popup>
       </CircleMarker>
     );
-  }), [ordonnes, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes]);
+  }), [ordonnes, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes, compact]);
+
+  // Fond indisponible (tuiles refusées) : après quelques erreurs, on bascule sur le plan OpenStreetMap.
+  const fondActif = FONDS[fond] || FONDS.clair;
+  const erreurs = useRef(0);
+  useEffect(() => { erreurs.current = 0; }, [fond]);
+  const erreurTuile = () => {
+    erreurs.current += 1;
+    if (erreurs.current === 6 && fond !== 'plan' && onFondIndisponible) onFondIndisponible();
+  };
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -271,9 +287,11 @@ export default function ProMap({
         maxBoundsViscosity={1.0}
         style={{ height: '100%', width: '100%' }}
       >
-        <TileLayer key={fond} url={(FONDS[fond] || FONDS.clair).url} attribution={(FONDS[fond] || FONDS.clair).attribution} keepBuffer={4} updateWhenZooming={false} />
-      
-        <ZoomControl position="bottomright" />
+        <TileLayer key={fond} url={fondActif.url} attribution={fondActif.attribution} maxNativeZoom={fondActif.maxNativeZoom} keepBuffer={4} updateWhenZooming={false}
+          eventHandlers={{ tileerror: erreurTuile }} />
+        {fondActif.labels && <TileLayer key={fond + '-noms'} url={fondActif.labels} maxNativeZoom={fondActif.maxNativeZoom} keepBuffer={4} updateWhenZooming={false} />}
+
+        {!compact && <ZoomControl position="bottomright" />}
         <TunisiaViewport />
         <MapUpdater view={view} />
         <LocationSelector onSelect={onSelectLocation} />

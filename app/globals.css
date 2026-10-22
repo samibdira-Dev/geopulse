@@ -86,19 +86,50 @@ button:not(:disabled):active { transform: translateY(1px); }
 }
 .gp-pulse { animation: gp-pulse 1.8s ease-out infinite; }
 
+/* Éléments propres au téléphone, cachés sur ordinateur */
+.gp-poignee, .gp-legende-btn, .gp-mobile-seul { display: none; }
+
+/* Téléphone : carte plein écran, onglets en bas, panneau qui se déplie (fermé, moitié, plein écran) */
 @media (max-width: 800px) {
-  .pro-layout { flex-direction: column-reverse !important; }
-  .pro-side { width: 100% !important; height: 58vh !important; flex-direction: column !important; }
-  .pro-rail { width: 100% !important; height: auto !important; flex-direction: row !important; overflow-x: auto; padding: 6px 8px !important; }
+  .pro-layout { display: block !important; height: 100dvh !important; overflow: hidden; }
+  .pro-map { position: fixed !important; inset: 0; }
+  .pro-side {
+    position: fixed !important; left: 0; right: 0; bottom: 0; z-index: 1100; width: 100% !important; height: auto !important;
+    flex-direction: column-reverse !important; box-shadow: none !important; background: transparent; pointer-events: none;
+  }
+  .pro-side > * { pointer-events: auto; }
+  .pro-rail { width: 100% !important; height: auto !important; flex-direction: row !important; overflow-x: auto; gap: 0 !important; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)) !important; }
   .pro-rail .gp-rail-logo, .pro-rail .gp-rail-bas { display: none !important; }
-  .pro-rail nav { flex-direction: row !important; }
-  .gp-rail-item.actif::before { display: none; }
-  .pro-rail .gp-rail-item { flex: none; min-width: 66px !important; }
+  .pro-rail nav { flex-direction: row !important; gap: 2px !important; width: 100%; }
+  .pro-rail .gp-rail-item { flex: 1 0 64px; min-width: 64px !important; padding: 7px 2px 6px !important; }
   .pro-rail .gp-rail-item span { white-space: nowrap; font-size: 10px !important; }
   .pro-rail .gp-rail-item span:empty { display: none; }
-  .pro-panel { width: 100% !important; }
-  .pro-map { height: 42vh !important; flex: none !important; }
-  .gp-legend { display: none !important; }
+  .gp-rail-item.actif::before { display: none; }
+  .pro-panel { width: 100% !important; border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px rgba(15,23,42,.18); overflow: hidden; transition: height .25s ease; }
+  .feuille-ferme .pro-panel { height: 62px; }
+  .feuille-demi .pro-panel { height: 50dvh; }
+  .feuille-plein .pro-panel { height: calc(100dvh - 84px - env(safe-area-inset-bottom)); }
+  .feuille-ferme .pro-panel > header, .feuille-demi .pro-panel > header { display: none !important; }
+  .feuille-ferme .gp-scroll { display: none !important; }
+  .gp-poignee { display: flex !important; }
+  .gp-mobile-seul { display: inline-flex !important; }
+  .gp-scroll { padding: 14px 16px 28px !important; }
+  /* 16 px minimum : sinon Safari zoome sur le champ touché */
+  .pro-panel input, .pro-panel select, .pro-panel textarea { font-size: 16px !important; }
+
+  .gp-outils { top: calc(env(safe-area-inset-top) + 8px) !important; left: 8px !important; right: 8px !important; gap: 6px !important; }
+  .gp-stats { padding: 6px 10px !important; gap: 9px !important; }
+  .gp-stats .num { font-size: 15px !important; }
+  .gp-stats > div > div:last-child { font-size: 9.5px !important; }
+  .gp-seg { padding: 3px !important; }
+  .gp-seg button { padding: 6px 8px !important; font-size: 11px !important; }
+  .gp-texte-large { display: none; }
+  .gp-legende-btn { display: inline-flex !important; }
+  .gp-legend { display: none !important; top: calc(env(safe-area-inset-top) + 104px); bottom: auto !important; left: 8px !important; max-height: 45dvh; overflow-y: auto; min-width: 0 !important; }
+  .gp-legend.ouverte { display: block !important; }
+  .leaflet-control-attribution { font-size: 9px; }
+  /* Mentions des fonds de carte au-dessus du panneau fermé */
+  .pro-map .leaflet-bottom { bottom: calc(132px + env(safe-area-inset-bottom)); }
 }
 
 /* Fond des écrans de connexion */
