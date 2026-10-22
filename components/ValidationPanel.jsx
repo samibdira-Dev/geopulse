@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { traduireErreur } from '../lib/points';
-import { btn, ghostBtn, inputStyle, Message } from './ui';
+import { btn, ghostBtn, inputStyle, Message, SectionTitle } from './ui';
 
 // Réservé aux managers et administrateurs : points « à valider ».
 export default function ValidationPanel({ points, typesById, champsByType, auteurs, onFocus, onChanged }) {
@@ -40,17 +40,14 @@ export default function ValidationPanel({ points, typesById, champsByType, auteu
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div>
-        <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>✅ À valider ({aValider.length})</h3>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>
-          Vérifiez la position et les informations, puis validez ou rejetez avec un motif.
-        </p>
-      </div>
+      <SectionTitle icon="checkCircle" title={`À valider (${aValider.length})`}>
+        Vérifiez la position et les informations, puis validez ou rejetez avec un motif.
+      </SectionTitle>
 
       {message && <Message type={message.type}>{message.text}</Message>}
 
       {aValider.length === 0 && (
-        <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+        <div style={{ border: '1px dashed #d5d9e3', borderRadius: '12px', padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
           Aucun point en attente de validation.
         </div>
       )}
@@ -61,8 +58,8 @@ export default function ValidationPanel({ points, typesById, champsByType, auteu
         const donnees = p.donnees || {};
         const enCours = busyId === p.id;
         return (
-          <div key={p.id} style={{ border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: '8px', padding: '12px' }}>
-            <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#1e293b' }}>
+          <div key={p.id} style={{ border: '1px solid #fcd34d', background: '#fffbeb', borderRadius: '12px', padding: '12px' }}>
+            <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>
               <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', background: type ? type.couleur : '#94a3b8', marginRight: '6px' }} />
               {p.nom}
             </div>
@@ -109,7 +106,7 @@ export default function ValidationPanel({ points, typesById, champsByType, auteu
               </div>
             ) : (
               <div style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap' }}>
-                <button type="button" disabled={enCours} onClick={() => traiter(p, 'valide')} style={btn('#16a34a', enCours)}>✅ Valider</button>
+                <button type="button" disabled={enCours} onClick={() => traiter(p, 'valide')} style={btn('#059669', enCours)}>✅ Valider</button>
                 <button type="button" disabled={enCours} onClick={() => { setRejetId(p.id); setMotif(''); }} style={btn('#dc2626', enCours)}>❌ Rejeter</button>
                 <button type="button" onClick={() => onFocus(p)} style={ghostBtn}>🗺 Voir sur la carte</button>
               </div>

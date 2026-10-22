@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { traduireErreur } from '../lib/points';
 import { devinerColonnes, lireFichier, preparerImport } from '../lib/ventes';
-import { btn, ghostBtn, inputStyle, labelStyle, Message } from './ui';
+import { btn, ghostBtn, inputStyle, labelStyle, Message, SectionTitle } from './ui';
 
 const fmt = (n) => (n == null ? '—' : Math.round(n).toLocaleString('fr-FR'));
 const moisLabel = (p) => (p ? new Date(p + 'T12:00:00').toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }) : '—');
@@ -78,13 +78,9 @@ export default function VentesImport({ societeId, points, onChanged }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div>
-        <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>📈 Ventes</h3>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '12px', lineHeight: 1.5 }}>
-          Importez un export Excel ou CSV de votre ERP : une ligne par facture ou par mois, avec le code client, la date et le montant.
-          Chaque ligne est reliée au point qui porte le même « Code client (ERP) ».
-        </p>
-      </div>
+      <SectionTitle icon="chart" title={'Ventes'}>
+        Importez un export Excel ou CSV de votre ERP : une ligne par facture ou par mois, avec le code client, la date et le montant. Chaque ligne est reliée au point qui porte le même « Code client (ERP) ».
+      </SectionTitle>
 
       {avecCode === 0 && (
         <Message>Aucun point n’a encore de code client. Renseignez le champ « Code client (ERP) » sur vos points pour pouvoir y relier les ventes.</Message>
@@ -93,13 +89,13 @@ export default function VentesImport({ societeId, points, onChanged }) {
       {message && <Message type={message.type}>{message.text}</Message>}
 
       <label style={{ ...ghostBtn, display: 'block', textAlign: 'center', padding: '14px', borderStyle: 'dashed', cursor: 'pointer' }}>
-        {fichier ? `📄 ${fichier.name}` : '📂 Choisir un fichier Excel ou CSV'}
+        {fichier ? `${fichier.name}` : 'Choisir un fichier Excel ou CSV'}
         <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={(e) => choisirFichier(e.target.files[0])} style={{ display: 'none' }} />
       </label>
 
       {table && colonnes && (
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#0f172a' }}>Colonnes du fichier ({table.lignes.length.toLocaleString('fr-FR')} lignes)</div>
+        <div style={{ border: '1px solid #e7e9f0', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontWeight: 600, fontSize: '13px', color: '#0f172a' }}>Colonnes du fichier ({table.lignes.length.toLocaleString('fr-FR')} lignes)</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             {CHAMPS.map(([k, label]) => (
               <div key={k}>
@@ -126,16 +122,16 @@ export default function VentesImport({ societeId, points, onChanged }) {
             </div>
           )}
 
-          <button type="button" disabled={busy || !apercu || !apercu.lignesVentes.length} onClick={importer} style={btn('#2563eb', busy || !apercu || !apercu.lignesVentes.length)}>
+          <button type="button" disabled={busy || !apercu || !apercu.lignesVentes.length} onClick={importer} style={btn(undefined, busy || !apercu || !apercu.lignesVentes.length)}>
             {busy ? `Import… ${Math.round(progression * 100)} %` : `Importer ${apercu ? apercu.lignesVentes.length.toLocaleString('fr-FR') : 0} montants mensuels`}
           </button>
         </div>
       )}
 
       <div>
-        <div style={{ fontWeight: 'bold', fontSize: '13px', color: '#0f172a', marginBottom: '6px' }}>Ventes importées par mois</div>
+        <div style={{ fontWeight: 600, fontSize: '13px', color: '#0f172a', marginBottom: '6px' }}>Ventes importées par mois</div>
         {mensuel.length === 0 ? (
-          <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>Aucune vente importée.</div>
+          <div style={{ border: '1px dashed #d5d9e3', borderRadius: '12px', padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>Aucune vente importée.</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
             <thead>
@@ -147,9 +143,9 @@ export default function VentesImport({ societeId, points, onChanged }) {
             </thead>
             <tbody>
               {mensuel.slice(0, 12).map((m) => (
-                <tr key={m.periode} style={{ borderTop: '1px solid #e2e8f0' }}>
+                <tr key={m.periode} style={{ borderTop: '1px solid #e7e9f0' }}>
                   <td style={{ padding: '4px' }}>{moisLabel(m.periode)}</td>
-                  <td style={{ padding: '4px', textAlign: 'right', fontWeight: 'bold' }}>{fmt(m.montant)}</td>
+                  <td style={{ padding: '4px', textAlign: 'right', fontWeight: 600 }}>{fmt(m.montant)}</td>
                   <td style={{ padding: '4px', textAlign: 'right' }}>{m.points}</td>
                 </tr>
               ))}

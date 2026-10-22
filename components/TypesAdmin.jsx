@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { champsDuType, traduireErreur } from '../lib/points';
-import { btn, ghostBtn, inputStyle, labelStyle, Message } from './ui';
+import { btn, ghostBtn, inputStyle, labelStyle, Message, SectionTitle } from './ui';
 
 const CATEGORIES = {
   client: 'Client',
@@ -91,12 +91,9 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      <div>
-        <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>🏷️ Types et champs</h3>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>
-          Définissez vos types de points (client, concurrent, agence…) et les informations à saisir pour chacun.
-        </p>
-      </div>
+      <SectionTitle icon="tag" title={'Types et champs'}>
+        Définissez vos types de points (client, concurrent, agence…) et les informations à saisir pour chacun.
+      </SectionTitle>
 
       {message && <Message type={message.type}>{message.text}</Message>}
 
@@ -104,18 +101,18 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
         const cs = champsDuType(champs, t.id);
         const est = ouvert === t.id;
         return (
-          <div key={t.id} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', opacity: t.actif ? 1 : 0.6 }}>
+          <div key={t.id} style={{ border: '1px solid #e7e9f0', borderRadius: '12px', background: '#fbfbfd', opacity: t.actif ? 1 : 0.6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px' }}>
               <input type="color" value={t.couleur} onChange={(e) => majType(t, { couleur: e.target.value })} style={{ width: '28px', height: '28px', border: 'none', padding: 0, background: 'none' }} title="Couleur" />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#1e293b' }}>{t.nom}{t.actif ? '' : ' (désactivé)'}</div>
+                <div style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>{t.nom}{t.actif ? '' : ' (désactivé)'}</div>
                 <div style={{ fontSize: '11px', color: '#64748b' }}>{CATEGORIES[t.categorie] || t.categorie} · {cs.length} champ(s)</div>
               </div>
               <button type="button" onClick={() => setOuvert(est ? null : t.id)} style={ghostBtn}>{est ? 'Fermer' : 'Champs'}</button>
             </div>
 
             {est && (
-              <div style={{ borderTop: '1px solid #e2e8f0', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ borderTop: '1px solid #e7e9f0', padding: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {cs.map((c) => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#334155' }}>
                     <span style={{ flex: 1 }}>
@@ -130,7 +127,7 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
                 ))}
                 {cs.length === 0 && <div style={{ fontSize: '12px', color: '#94a3b8' }}>Aucun champ pour ce type.</div>}
 
-                <form onSubmit={(e) => ajouterChamp(e, t)} style={{ borderTop: '1px dashed #cbd5e1', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <form onSubmit={(e) => ajouterChamp(e, t)} style={{ borderTop: '1px dashed #d5d9e3', paddingTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                     <input required value={champ.libelle} onChange={(e) => setChamp({ ...champ, libelle: e.target.value })} placeholder="Libellé (ex : Chiffre d’affaires)" style={inputStyle} />
                     <select value={champ.type_champ} onChange={(e) => setChamp({ ...champ, type_champ: e.target.value })} style={inputStyle}>
@@ -143,7 +140,7 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
                   <label style={{ fontSize: '12px', color: '#334155' }}>
                     <input type="checkbox" checked={champ.obligatoire} onChange={(e) => setChamp({ ...champ, obligatoire: e.target.checked })} /> Obligatoire pour envoyer à validation
                   </label>
-                  <button type="submit" disabled={busy || !champ.libelle.trim()} style={btn('#2563eb', busy || !champ.libelle.trim())}>Ajouter le champ</button>
+                  <button type="submit" disabled={busy || !champ.libelle.trim()} style={btn(undefined, busy || !champ.libelle.trim())}>Ajouter le champ</button>
                 </form>
 
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -156,8 +153,8 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
         );
       })}
 
-      <form onSubmit={ajouterType} style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ fontWeight: 'bold', fontSize: '14px', color: '#0f172a' }}>Nouveau type de point</div>
+      <form onSubmit={ajouterType} style={{ borderTop: '1px solid #e7e9f0', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>Nouveau type de point</div>
         <div>
           <label style={labelStyle}>Nom *</label>
           <input required value={nouveau.nom} onChange={(e) => setNouveau({ ...nouveau, nom: e.target.value })} placeholder="Ex : Grossiste, Agence, Pharmacie…" style={inputStyle} />
@@ -171,7 +168,7 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
           </div>
           <input type="color" value={nouveau.couleur} onChange={(e) => setNouveau({ ...nouveau, couleur: e.target.value })} style={{ width: '40px', height: '36px', border: 'none', padding: 0, background: 'none' }} title="Couleur" />
         </div>
-        <button type="submit" disabled={busy || !nouveau.nom.trim()} style={btn('#16a34a', busy || !nouveau.nom.trim())}>Ajouter le type</button>
+        <button type="submit" disabled={busy || !nouveau.nom.trim()} style={btn('#059669', busy || !nouveau.nom.trim())}>Ajouter le type</button>
       </form>
     </div>
   );

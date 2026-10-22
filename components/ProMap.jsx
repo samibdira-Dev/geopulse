@@ -1,9 +1,9 @@
 'use client';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Circle, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Circle, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
 import { useCallback, useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { GOUV_COLORS, normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
+import { normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
 
 import { STATUTS, isManagerRole } from '../lib/points';
 import { caMensuelMoyen, evolution } from '../lib/ventes';
@@ -20,25 +20,50 @@ function makeTypeIcon(color, statut) {
   const key = color + '|' + statut;
   if (!iconCache[key]) {
     const ring = RING_BY_STATUT[statut] || RING_BY_STATUT.valide;
-    const opacity = statut === 'brouillon' ? 0.6 : 1;
+    const opacity = statut === 'brouillon' ? 0.65 : 1;
+    const halo = statut === 'valide' ? `0 0 0 1px ${color}33,` : '';
     iconCache[key] = L.divIcon({
       className: '',
-      html: `<div style="width:22px;height:22px;box-sizing:border-box;border-radius:50%;background:${color};border:3px ${ring.style} ${ring.color};box-shadow:0 1px 4px rgba(0,0,0,.5);opacity:${opacity}"></div>`,
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
-      popupAnchor: [0, -12],
+      html: `<div class="gp-marker" style="width:18px;height:18px;box-sizing:border-box;border-radius:50%;background:radial-gradient(circle at 35% 30%, ${color}cc, ${color} 60%);border:2.5px ${ring.style} ${ring.color};box-shadow:${halo}0 2px 6px rgba(15,23,42,.35);opacity:${opacity}"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+      popupAnchor: [0, -10],
     });
   }
   return iconCache[key];
 }
 
-const simIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
+// Emplacement étudié : repère violet avec une onde qui pulse.
+const simIcon = L.divIcon({
+  className: '',
+  html: `<div style="position:relative;width:34px;height:44px">
+    <div class="gp-pulse" style="position:absolute;left:5px;bottom:-12px;width:24px;height:24px;border-radius:50%;background:rgba(124,58,237,.35)"></div>
+    <svg width="34" height="44" viewBox="0 0 34 44" style="position:absolute;inset:0;filter:drop-shadow(0 4px 8px rgba(76,29,149,.45))">
+      <defs><linearGradient id="gpSim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#a855f7"/></linearGradient></defs>
+      <path d="M17 43s14-13.2 14-25.5A14 14 0 0 0 3 17.5C3 29.8 17 43 17 43Z" fill="url(#gpSim)" stroke="white" stroke-width="2"/>
+      <circle cx="17" cy="17.5" r="5.5" fill="white"/>
+    </svg>
+  </div>`,
+  iconSize: [34, 44],
+  iconAnchor: [17, 43],
+  popupAnchor: [0, -38],
 });
+
+// Fonds de carte proposés (bouton « Clair / Plan / Satellite »).
+const FONDS = {
+  clair: {
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+  },
+  plan: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors',
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Imagerie &copy; Esri, Maxar, Earthstar Geographics',
+  },
+};
 
 // Emprise de la Tunisie (sud-ouest, nord-est) : la vue ne peut pas en sortir.
 const TUNISIA_BOUNDS = [[30.0, 7.3], [37.7, 11.9]];
@@ -99,6 +124,7 @@ export default function ProMap({
   view,
   zoneKm = null,         // rayon de la zone simulée autour du point (km)
   ventes = {},           // id du point -> synthèse des ventes
+  fond = 'clair',        // fond de carte : clair, plan ou satellite
 }) {
   const [geoData, setGeoData] = useState(null);
 
@@ -123,22 +149,24 @@ export default function ProMap({
 
   const geoStyle = useCallback((feature) => {
     const name = getGouvName(feature);
-    const color = GOUV_COLORS[name] || '#3b82f6';
     const isSelected = !!selectedGouv && selectedGouv !== 'Tous' && sameGouvernorat(name, selectedGouv);
+    const satellite = fond === 'satellite';
 
     return {
-      fillColor: color,
-      weight: isSelected ? 3 : 2,
-      opacity: 1,
-      color: '#ffffff',
-      fillOpacity: isSelected ? 0.4 : 0.15,
+      fillColor: '#6366f1',
+      weight: isSelected ? 2.5 : 1,
+      opacity: isSelected ? 1 : satellite ? 0.7 : 0.45,
+      color: isSelected ? '#4f46e5' : satellite ? '#ffffff' : '#6366f1',
+      fillOpacity: isSelected ? 0.18 : satellite ? 0 : 0.035,
     };
-  }, [selectedGouv]);
+  }, [selectedGouv, fond]);
 
   const onEachGouv = (feature, layer) => {
     const name = getGouvName(feature);
-    layer.bindTooltip(`<b>Gouvernorat : ${name}</b>`, { sticky: true });
+    layer.bindTooltip(name, { sticky: true, direction: 'top', offset: [0, -8] });
     layer.on({
+      mouseover: () => layer.setStyle({ fillOpacity: 0.12, weight: 2, opacity: 0.9 }),
+      mouseout: () => layer.setStyle(geoStyle(feature)),
       click: (e) => {
         // Empêche l'événement de remonter à la carte (LocationSelector),
         // sinon le géocodage inverse part deux fois pour un seul clic.
@@ -154,22 +182,21 @@ export default function ProMap({
         center={[34.0, 9.5]}
         zoom={6}
         zoomSnap={0.25}
+        zoomControl={false}
         maxBounds={TUNISIA_BOUNDS}
         maxBoundsViscosity={1.0}
         style={{ height: '100%', width: '100%' }}
       >
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="&copy; OpenStreetMap contributors"
-        />
+        <TileLayer key={fond} url={(FONDS[fond] || FONDS.clair).url} attribution={(FONDS[fond] || FONDS.clair).attribution} />
       
+        <ZoomControl position="bottomright" />
         <TunisiaViewport />
         <MapUpdater view={view} />
         <LocationSelector onSelect={onSelectLocation} />
 
         {geoData && (
           <GeoJSON
-            key={selectedGouv}
+            key={selectedGouv + '|' + fond}
             data={geoData} 
             style={geoStyle} 
             onEachFeature={onEachGouv} 
@@ -189,25 +216,16 @@ export default function ProMap({
               icon={makeTypeIcon(type.couleur, p.statut)}
               title={p.nom}
             >
-              <Popup minWidth={210}>
-                <div style={{ fontFamily: 'sans-serif', lineHeight: 1.45, minWidth: '190px' }}>
-                  <strong style={{ fontSize: '14px', color: '#0f172a' }}>{p.nom}</strong>
-                  <div style={{ margin: '3px 0 5px' }}>
-                    <span style={{ fontSize: '11px', background: type.couleur, color: '#fff', padding: '1px 7px', borderRadius: '10px', fontWeight: 'bold', marginRight: '6px' }}>{type.nom}</span>
-                    <span style={{ fontSize: '11px', background: statut.bg, color: statut.color, padding: '1px 7px', borderRadius: '10px', fontWeight: 'bold' }}>{statut.label}</span>
+              <Popup minWidth={250} maxWidth={290}>
+                <div style={{ fontFamily: 'inherit', lineHeight: 1.45, minWidth: '230px', color: '#334155' }}>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '10.5px', background: type.couleur + '1a', color: type.couleur, padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>{type.nom}</span>
+                    <span style={{ fontSize: '10.5px', background: statut.bg, color: statut.color, padding: '2px 8px', borderRadius: '999px', fontWeight: 600 }}>{statut.label}</span>
                   </div>
-                  <div style={{ fontSize: '12px', color: '#475569' }}>
-                    📍 {[p.delegation, p.gouvernorat].filter(Boolean).join(' · ') || 'Zone non renseignée'}
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', letterSpacing: '-.01em', paddingRight: '14px' }}>{p.nom}</div>
+                  <div style={{ fontSize: '12px', color: '#64748b', marginTop: '1px' }}>
+                    {[p.delegation, p.gouvernorat].filter(Boolean).join(' · ') || 'Zone non renseignée'}{p.code_externe ? ` · ${p.code_externe}` : ''}
                   </div>
-                  {champs.map((c) => {
-                    const v = donnees[c.cle];
-                    if (v === undefined || v === null || v === '') return null;
-                    return (
-                      <div key={c.id} style={{ fontSize: '12px', color: '#334155' }}>
-                        <b>{c.libelle} :</b> {typeof v === 'boolean' ? (v ? 'Oui' : 'Non') : String(v)}
-                      </div>
-                    );
-                  })}
                   {ventes[p.id] && (() => {
                     const v = ventes[p.id];
                     const evo = evolution(v);
@@ -216,28 +234,43 @@ export default function ProMap({
                     const m2 = cSurface ? Number((p.donnees || {})[cSurface.cle]) : NaN;
                     const caM2 = m2 > 0 && caMensuelMoyen(v) ? caMensuelMoyen(v) / m2 : null;
                     return (
-                      <div style={{ fontSize: '12px', color: '#334155', marginTop: '4px', background: '#f5f3ff', padding: '4px 6px', borderRadius: '4px' }}>
-                        <b>CA 12 mois :</b> {Math.round(Number(v.ca_12m)).toLocaleString('fr-FR')} TND
-                        {evo != null && <span style={{ color: evo >= 0 ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}> ({evo >= 0 ? '+' : ''}{Math.round(evo * 100)} %)</span>}
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>Moyenne {Math.round(caMensuelMoyen(v) || 0).toLocaleString('fr-FR')} TND / mois{caM2 != null ? ` · ${Math.round(caM2).toLocaleString('fr-FR')} TND/m²` : ''}{p.code_externe ? ` · code ${p.code_externe}` : ''}</div>
+                      <div style={{ marginTop: '10px', background: 'linear-gradient(135deg, #0b1020, #1e1b4b)', color: 'white', padding: '10px 12px', borderRadius: '12px' }}>
+                        <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.08em', color: '#a5b4fc', fontWeight: 600 }}>CA 12 mois</div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                          <span style={{ fontSize: '19px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{Math.round(Number(v.ca_12m)).toLocaleString('fr-FR')} TND</span>
+                          {evo != null && <span style={{ fontSize: '11px', fontWeight: 700, color: evo >= 0 ? '#34d399' : '#f87171' }}>{evo >= 0 ? '▲' : '▼'} {Math.abs(Math.round(evo * 100))} %</span>}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#c7d2fe' }}>{Math.round(caMensuelMoyen(v) || 0).toLocaleString('fr-FR')} TND / mois{caM2 != null ? ` · ${Math.round(caM2).toLocaleString('fr-FR')} TND/m²` : ''}</div>
                       </div>
                     );
                   })()}
-                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
-                    Ajouté par {p.cree_par === currentUserId ? 'moi' : (auteurs[p.cree_par] || 'un membre')}
-                  </div>
+                  {champs.some((c) => donnees[c.cle] !== undefined && donnees[c.cle] !== null && donnees[c.cle] !== '') && (
+                    <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '10px', rowGap: '3px', fontSize: '12px' }}>
+                      {champs.map((c) => {
+                        const v = donnees[c.cle];
+                        if (v === undefined || v === null || v === '') return null;
+                        return [
+                          <span key={c.id + 'l'} style={{ color: '#94a3b8' }}>{c.libelle}</span>,
+                          <span key={c.id + 'v'} style={{ color: '#0f172a', fontWeight: 500 }}>{typeof v === 'boolean' ? (v ? 'Oui' : 'Non') : String(v)}</span>,
+                        ];
+                      })}
+                    </div>
+                  )}
                   {p.statut === 'rejete' && p.commentaire_validation && (
-                    <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '4px' }}>Motif du rejet : {p.commentaire_validation}</div>
+                    <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '8px' }}>Motif du rejet : {p.commentaire_validation}</div>
                   )}
-                  {editable && onEditPoint && (
-                    <button
-                      type="button"
-                      onClick={() => onEditPoint(p)}
-                      style={{ marginTop: '8px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', padding: '5px 10px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      ✏️ Modifier
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #eef0f4' }}>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ajouté par {p.cree_par === currentUserId ? 'moi' : (auteurs[p.cree_par] || 'un membre')}</span>
+                    {editable && onEditPoint && (
+                      <button
+                        type="button"
+                        onClick={() => onEditPoint(p)}
+                        style={{ background: '#eef0ff', color: '#4338ca', border: 'none', borderRadius: '8px', padding: '5px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Modifier
+                      </button>
+                    )}
+                  </div>
                 </div>
               </Popup>
             </Marker>
@@ -248,7 +281,7 @@ export default function ProMap({
           <Circle
             center={[simulatedPoint.lat, simulatedPoint.lng]}
             radius={zoneKm * 1000}
-            pathOptions={{ color: '#7c3aed', weight: 2, fillColor: '#8b5cf6', fillOpacity: 0.12, dashArray: '6 4' }}
+            pathOptions={{ color: '#6d28d9', weight: 1.5, fillColor: '#8b5cf6', fillOpacity: 0.14, dashArray: '2 6', lineCap: 'round' }}
             interactive={false}
           />
         )}
@@ -265,10 +298,9 @@ export default function ProMap({
             }}
           >
             <Popup>
-              <b>Position du point</b><br />
-              {simulatedPoint.quartier && <span><b>Quartier :</b> {simulatedPoint.quartier}<br /></span>}
-              {simulatedPoint.gouvernorat && <span><b>Gouvernorat :</b> {simulatedPoint.gouvernorat}<br /></span>}
-              {onDragSimulated && <span style={{ color: '#64748b', fontSize: '12px' }}>Glissez ce pin pour ajuster la position.</span>}
+              <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.08em', color: '#7c3aed', fontWeight: 600 }}>Emplacement étudié</div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginTop: '2px' }}>{[simulatedPoint.quartier, simulatedPoint.gouvernorat].filter(Boolean).join(' · ') || 'Position choisie'}</div>
+              {onDragSimulated && <div style={{ color: '#64748b', fontSize: '12px', marginTop: '4px' }}>Glissez le repère pour ajuster la position.</div>}
             </Popup>
           </Marker>
         )}

@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { champsDuType, champsManquants, isManagerRole, nettoyerDonnees, traduireErreur } from '../lib/points';
-import { inputStyle, labelStyle, btn, ghostBtn, Message } from './ui';
+import Icon from './icons';
+import { inputStyle, labelStyle, btn, ghostBtn, Message, SectionTitle } from './ui';
 
 const SOURCES = {
   gps: 'position GPS',
@@ -141,19 +142,14 @@ export default function PointForm({
   const peutBrouillon = !editing || manager || ['brouillon', 'rejete'].includes(editing.statut);
 
   return (
-    <form onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div>
-        <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>
-          {editing ? `✏️ Modifier « ${editing.nom} »` : '➕ Nouveau point'}
-        </h3>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>
-          Cliquez sur la carte pour fixer le point, puis glissez le pin violet pour l’ajuster.
-        </p>
-      </div>
+    <form onSubmit={(e) => e.preventDefault()} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <SectionTitle icon="pin" title={editing ? `Modifier « ${editing.nom} »` : 'Nouveau point'}>
+        Cliquez sur la carte pour fixer le point, puis glissez le repère violet pour l’ajuster.
+      </SectionTitle>
 
       {position ? (
-        <div style={{ background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: '8px', padding: '10px', fontSize: '12px', color: '#4c1d95' }}>
-          📍 <b>{position.lat.toFixed(5)}, {position.lng.toFixed(5)}</b> ({SOURCES[position.source] || 'pin sur la carte'}
+        <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '12px', padding: '11px 12px', fontSize: '12px', color: '#4c1d95' }}>
+          <b className="num">{position.lat.toFixed(5)}, {position.lng.toFixed(5)}</b> ({SOURCES[position.source] || 'pin sur la carte'}
           {position.source === 'gps' && position.precision != null ? `, précision ±${position.precision} m` : ''})
           {position.source === 'gps' && position.precision > 100 && (
             <div style={{ color: '#b45309', marginTop: '4px' }}>
@@ -162,13 +158,13 @@ export default function PointForm({
           )}
         </div>
       ) : (
-        <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '14px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+        <div style={{ border: '1px dashed #d5d9e3', borderRadius: '12px', padding: '14px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
           Aucun emplacement. Cliquez sur la carte.
         </div>
       )}
 
       {onUseGps && (
-        <button type="button" onClick={onUseGps} style={ghostBtn}>📡 Utiliser ma position actuelle</button>
+        <button type="button" onClick={onUseGps} style={{ ...ghostBtn, justifyContent: 'center', padding: '9px 12px' }}><Icon name="crosshair" size={15} /> Utiliser ma position actuelle</button>
       )}
 
       <div>
@@ -198,11 +194,11 @@ export default function PointForm({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
         <div>
           <label style={labelStyle}>Gouvernorat (détecté)</label>
-          <input value={gouvernorat} onChange={(e) => setGouvernorat(e.target.value)} style={{ ...inputStyle, border: '1px solid #3b82f6', background: '#eff6ff', fontWeight: 'bold' }} />
+          <input value={gouvernorat} onChange={(e) => setGouvernorat(e.target.value)} style={{ ...inputStyle, border: '1px solid #3b82f6', background: '#f5f6ff', fontWeight: 600 }} />
         </div>
         <div>
           <label style={labelStyle}>Ville / quartier (détecté)</label>
-          <input value={delegation} onChange={(e) => setDelegation(e.target.value)} style={{ ...inputStyle, border: '1px solid #3b82f6', background: '#eff6ff', fontWeight: 'bold' }} />
+          <input value={delegation} onChange={(e) => setDelegation(e.target.value)} style={{ ...inputStyle, border: '1px solid #3b82f6', background: '#f5f6ff', fontWeight: 600 }} />
         </div>
       </div>
 
@@ -218,18 +214,18 @@ export default function PointForm({
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {peutBrouillon && (
-          <button type="button" disabled={saving} onClick={() => enregistrer('brouillon')} style={btn('#64748b', saving)}>
-            💾 Enregistrer en brouillon
+          <button type="button" disabled={saving} onClick={() => enregistrer('brouillon')} style={{ ...ghostBtn, justifyContent: 'center', padding: '10px 12px' }}>
+            Enregistrer en brouillon
           </button>
         )}
         {peutBrouillon && (
-          <button type="button" disabled={saving} onClick={() => enregistrer('a_valider')} style={btn('#f59e0b', saving)}>
-            📤 Envoyer pour validation
+          <button type="button" disabled={saving} onClick={() => enregistrer('a_valider')} style={btn('#0f172a', saving)}>
+            Envoyer pour validation
           </button>
         )}
         {manager && (
-          <button type="button" disabled={saving} onClick={() => enregistrer('valide')} style={btn('#16a34a', saving)}>
-            ✅ Enregistrer et valider
+          <button type="button" disabled={saving} onClick={() => enregistrer('valide')} style={btn(undefined, saving)}>
+            Enregistrer et valider
           </button>
         )}
         {editing && (

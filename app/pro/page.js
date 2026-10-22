@@ -16,11 +16,12 @@ import SimulationPanel from '../../components/SimulationPanel';
 import DemographiePanel from '../../components/DemographiePanel';
 import { surfacesGouvernorats } from '../../lib/simulation';
 import { GOUV_COORDS } from '../../lib/gouvernorats';
-import { Message, ghostBtn } from '../../components/ui';
+import { C, Message, surtitre } from '../../components/ui';
+import Icon, { Logo } from '../../components/icons';
 
 const ProMap = dynamic(() => import('../../components/ProMap'), {
   ssr: false,
-  loading: () => <div style={{ padding: '20px', color: '#64748b' }}>Chargement de la carte…</div>,
+  loading: () => <div style={{ padding: '20px', color: '#64748b', fontSize: '13px' }}>Chargement de la carte…</div>,
 });
 
 export default function ProPage() {
@@ -44,6 +45,7 @@ export default function ProPage() {
   const [demographie, setDemographie] = useState([]);
   const [rayonKm, setRayonKm] = useState(1);
   const [gouvDemo, setGouvDemo] = useState('Tous');
+  const [fond, setFond] = useState('clair'); // fond de carte : clair, plan ou satellite
   const requete = useRef(0);
 
   const userId = session ? session.user.id : null;
@@ -153,6 +155,20 @@ export default function ProPage() {
     [points, filtreType]
   );
   const aValiderCount = points.filter((p) => p.statut === 'a_valider').length;
+  const compteParType = useMemo(() => {
+    const out = {};
+    points.forEach((p) => { out[p.type_id] = (out[p.type_id] || 0) + 1; });
+    return out;
+  }, [points]);
+  // Chiffres clés affichés au-dessus de la carte
+  const stats = useMemo(() => {
+    const cat = (p) => (typesById[p.type_id] || {}).categorie;
+    return {
+      reseau: points.filter((p) => ['point_de_vente', 'client'].includes(cat(p))).length,
+      concurrents: points.filter((p) => cat(p) === 'concurrent').length,
+      ca12: Object.values(ventes).reduce((s, v) => s + (Number(v.ca_12m) || 0), 0),
+    };
+  }, [points, typesById, ventes]);
 
   // Nouvelle position (clic, glissement, GPS) : gouvernorat local puis quartier via Nominatim.
   const poser = useCallback(async (lat, lng, source = 'pin_manuel', precision = null) => {
@@ -213,118 +229,182 @@ export default function ProPage() {
   };
 
   // --- États d'écran ---
+  // --- États d'écran ---
   if (!supabaseConfigured) {
-    return <main style={{ padding: '24px', fontFamily: 'system-ui' }}><Message>Supabase n’est pas configuré (variables NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY).</Message></main>;
+    return <main style={{ padding: '24px' }}><Message>Supabase n’est pas configuré (variables NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY).</Message></main>;
   }
-  if (session === undefined) return <main style={{ padding: '24px', fontFamily: 'system-ui', color: '#64748b' }}>Chargement…</main>;
+  if (session === undefined) return <Chargement texte="Chargement…" />;
   if (!session) return <LoginScreen />;
-  if (membership === undefined) return <main style={{ padding: '24px', fontFamily: 'system-ui', color: '#64748b' }}>Chargement de votre société…</main>;
+  if (membership === undefined) return <Chargement texte="Chargement de votre société…" />;
   if (!membership) {
     return <SocieteSetup email={session.user.email} onCreated={chargerMembership} onSignOut={deconnexion} />;
   }
 
   const onglets = [
-    ['nouveau', editing ? '✏️ Modifier' : '➕ Nouveau'],
-    ['simuler', '🎯 Simuler'],
-    ['points', '📋 Points'],
-    ['demographie', '👥 Démographie'],
-    ...(manager ? [['valider', `✅ À valider${aValiderCount ? ` (${aValiderCount})` : ''}`], ['ventes', '📈 Ventes']] : []),
-    ...(role === 'admin' ? [['types', '🏷️ Types'], ['equipe', '🧑‍🤝‍🧑 Équipe']] : []),
+    ['nouveau', editing ? 'edit' : 'plus', editing ? 'Modifier' : 'Nouveau'],
+    ['simuler', 'target', 'Simuler'],
+    ['points', 'list', 'Points'],
+    ['demographie', 'users', 'Démo\u00ADgraphie'],
+    ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'chart', 'Ventes']] : []),
+    ...(role === 'admin' ? [['types', 'tag', 'Types'], ['equipe', 'team', 'Équipe']] : []),
   ];
+  const email = session.user.email || '';
+  const initiales = ((membership.nom_affiche || email).match(/[A-Za-zÀ-ÿ]/g) || ['?']).slice(0, 2).join('').toUpperCase();
 
   return (
-    <div className="pro-layout" style={{ display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif', background: '#f8fafc' }}>
-      <style>{`@media (max-width: 800px){.pro-layout{flex-direction:column-reverse}.pro-side{width:100%!important;height:55vh!important}.pro-map{height:45vh!important;flex:none!important}}`}</style>
-
-      <aside className="pro-side" style={{ width: '400px', flex: 'none', height: '100%', display: 'flex', flexDirection: 'column', background: 'white', borderRight: '1px solid #e2e8f0' }}>
-        <header style={{ padding: '12px 14px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-          <div style={{ minWidth: 0 }}>
-            {memberships.length > 1 ? (
-              <select value={membership.societe_id} onChange={(e) => changerSociete(e.target.value)} style={{ fontWeight: 'bold', fontSize: '14px', padding: '4px', borderRadius: '6px', border: '1px solid #cbd5e1', maxWidth: '220px' }}>
-                {memberships.map((m) => <option key={m.societe_id} value={m.societe_id}>{m.societes ? m.societes.nom : m.societe_id}</option>)}
-              </select>
-            ) : (
-              <div style={{ fontWeight: 'bold', color: '#0f172a', fontSize: '15px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{societe ? societe.nom : 'Société'}</div>
-            )}
-            <div style={{ fontSize: '11px', color: '#64748b' }}>{ROLES[role]} · {session.user.email}</div>
+    <div className="pro-layout" style={{ display: 'flex', height: '100vh', background: C.bg }}>
+      <aside className="pro-side" style={{ flex: 'none', height: '100%', display: 'flex', boxShadow: '1px 0 0 ' + C.line, zIndex: 2 }}>
+        {/* Rail de navigation */}
+        <div className="pro-rail" style={{ width: '84px', background: C.ink, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 10px', gap: '18px', boxSizing: 'border-box' }}>
+          <div className="gp-rail-logo"><Logo size={40} /></div>
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+            {onglets.map(([k, icone, label, badge]) => (
+              <button key={k} type="button" onClick={() => setTab(k)} title={label.replace('\u00AD', '')}
+                className={'gp-rail-item' + (tab === k ? ' actif' : '')}
+                style={{ position: 'relative', border: 'none', background: undefined, borderRadius: '12px', padding: '9px 2px 8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', minWidth: '62px' }}>
+                <Icon name={icone} size={20} />
+                <span style={{ fontSize: '10.5px', fontWeight: 600, letterSpacing: '.01em', lineHeight: 1.1, textAlign: 'center' }}>{label}</span>
+                {badge ? (
+                  <span style={{ position: 'absolute', top: '4px', right: '9px', minWidth: '17px', height: '17px', padding: '0 4px', boxSizing: 'border-box', borderRadius: '9px', background: '#f59e0b', color: C.ink, fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{badge}</span>
+                ) : null}
+              </button>
+            ))}
+          </nav>
+          <div className="gp-rail-bas" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+            <div title={email} style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg,#334155,#1e293b)', color: '#e2e8f0', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,.12)' }}>{initiales}</div>
+            <button type="button" onClick={deconnexion} title="Se déconnecter" className="gp-rail-item" style={{ border: 'none', background: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer' }}>
+              <Icon name="logout" size={18} />
+            </button>
           </div>
-          <button type="button" onClick={deconnexion} style={ghostBtn}>Quitter</button>
-        </header>
+        </div>
 
-        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '8px 10px', borderBottom: '1px solid #e2e8f0' }}>
-          {onglets.map(([k, label]) => (
-            <button key={k} type="button" onClick={() => setTab(k)} style={{ ...ghostBtn, background: tab === k ? '#dbeafe' : 'white', borderColor: tab === k ? '#2563eb' : '#cbd5e1', color: tab === k ? '#1d4ed8' : '#334155' }}>{label}</button>
-          ))}
-        </nav>
+        {/* Panneau de l'onglet */}
+        <div className="pro-panel" style={{ width: '400px', display: 'flex', flexDirection: 'column', background: 'white', minHeight: 0 }}>
+          <header style={{ padding: '16px 20px', borderBottom: '1px solid ' + C.line, display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: C.bg, border: '1px solid ' + C.line, color: C.text, fontWeight: 800, fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+              {(societe && societe.nom ? societe.nom : 'S').slice(0, 1).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {memberships.length > 1 ? (
+                <select value={membership.societe_id} onChange={(e) => changerSociete(e.target.value)} style={{ fontWeight: 700, fontSize: '15px', padding: '2px 4px', marginLeft: '-5px', borderRadius: '8px', border: '1px solid transparent', background: 'transparent', color: C.text, maxWidth: '240px', cursor: 'pointer' }}>
+                  {memberships.map((m) => <option key={m.societe_id} value={m.societe_id}>{m.societes ? m.societes.nom : m.societe_id}</option>)}
+                </select>
+              ) : (
+                <div style={{ fontWeight: 700, color: C.text, fontSize: '15px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{societe ? societe.nom : 'Société'}</div>
+              )}
+              <div style={{ fontSize: '11.5px', color: C.muted, display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                <span style={{ background: C.brandSoft, color: C.brandDark, padding: '1px 7px', borderRadius: '999px', fontWeight: 600, fontSize: '10.5px' }}>{ROLES[role]}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</span>
+              </div>
+            </div>
+          </header>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {info && <Message type={info.type}>{info.text}</Message>}
+          <div className="gp-scroll" style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {info && <Message type={info.type}>{info.text}</Message>}
 
-          {tab === 'nouveau' && (typesActifs.length === 0 ? (
-            <Message>Aucun type de point actif. {role === 'admin' ? 'Créez-en un dans l’onglet « Types ».' : 'Demandez à votre administrateur d’en créer un.'}</Message>
-          ) : (
-            <PointForm
-              types={typesActifs}
-              champs={champs}
-              position={position}
-              editing={editing}
-              role={role}
-              societeId={membership.societe_id}
-              onUseGps={utiliserGps}
-              onSaved={apresEnregistrement}
-              onCancelEdit={() => { setEditing(null); setPosition(null); }}
-            />
-          ))}
+            {tab === 'nouveau' && (typesActifs.length === 0 ? (
+              <Message>Aucun type de point actif. {role === 'admin' ? 'Créez-en un dans l’onglet « Types ».' : 'Demandez à votre administrateur d’en créer un.'}</Message>
+            ) : (
+              <PointForm
+                types={typesActifs}
+                champs={champs}
+                position={position}
+                editing={editing}
+                role={role}
+                societeId={membership.societe_id}
+                onUseGps={utiliserGps}
+                onSaved={apresEnregistrement}
+                onCancelEdit={() => { setEditing(null); setPosition(null); }}
+              />
+            ))}
 
-          {tab === 'simuler' && (
-            <SimulationPanel
-              position={position}
-              rayonKm={rayonKm}
-              onRayon={setRayonKm}
-              points={points}
-              typesById={typesById}
-              champs={champs}
-              demographie={demographie}
-              surfaces={surfaces}
-              ventes={ventes}
-              onAjouter={() => { setEditing(null); setTab('nouveau'); }}
-            />
-          )}
+            {tab === 'simuler' && (
+              <SimulationPanel
+                position={position}
+                rayonKm={rayonKm}
+                onRayon={setRayonKm}
+                points={points}
+                typesById={typesById}
+                champs={champs}
+                demographie={demographie}
+                surfaces={surfaces}
+                ventes={ventes}
+                onAjouter={() => { setEditing(null); setTab('nouveau'); }}
+              />
+            )}
 
-          {tab === 'demographie' && (
-            <DemographiePanel demographie={demographie} gouvernorat={gouvDemo} onGouvernorat={choisirGouvDemo} />
-          )}
+            {tab === 'demographie' && (
+              <DemographiePanel demographie={demographie} gouvernorat={gouvDemo} onGouvernorat={choisirGouvDemo} />
+            )}
 
-          {tab === 'points' && (
-            <PointsList points={points} typesById={typesById} auteurs={auteurs} userId={userId} role={role} onFocus={focaliser} onEdit={modifier} onDelete={supprimer} />
-          )}
+            {tab === 'points' && (
+              <PointsList points={points} typesById={typesById} auteurs={auteurs} userId={userId} role={role} onFocus={focaliser} onEdit={modifier} onDelete={supprimer} />
+            )}
 
-          {tab === 'valider' && manager && (
-            <ValidationPanel points={points} typesById={typesById} champsByType={champsByType} auteurs={auteurs} onFocus={focaliser} onChanged={charger} />
-          )}
+            {tab === 'valider' && manager && (
+              <ValidationPanel points={points} typesById={typesById} champsByType={champsByType} auteurs={auteurs} onFocus={focaliser} onChanged={charger} />
+            )}
 
-          {tab === 'ventes' && manager && (
-            <VentesImport societeId={membership.societe_id} points={points} onChanged={charger} />
-          )}
+            {tab === 'ventes' && manager && (
+              <VentesImport societeId={membership.societe_id} points={points} onChanged={charger} />
+            )}
 
-          {tab === 'types' && role === 'admin' && (
-            <TypesAdmin societeId={membership.societe_id} types={types} champs={champs} onChanged={charger} />
-          )}
+            {tab === 'types' && role === 'admin' && (
+              <TypesAdmin societeId={membership.societe_id} types={types} champs={champs} onChanged={charger} />
+            )}
 
-          {tab === 'equipe' && role === 'admin' && (
-            <TeamPanel societeId={membership.societe_id} membres={membres} userId={userId} onChanged={() => { charger(); chargerMembership(); }} />
-          )}
+            {tab === 'equipe' && role === 'admin' && (
+              <TeamPanel societeId={membership.societe_id} membres={membres} userId={userId} onChanged={() => { charger(); chargerMembership(); }} />
+            )}
+          </div>
         </div>
       </aside>
 
       <section className="pro-map" style={{ flex: 1, position: 'relative', minWidth: 0 }}>
-        <div style={{ position: 'absolute', top: '10px', left: '50px', zIndex: 1000, display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          <select value={filtreType} onChange={(e) => setFiltreType(e.target.value)} style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', fontSize: '12px', fontWeight: 'bold' }}>
-            <option value="tous">Tous les types</option>
-            {types.map((t) => <option key={t.id} value={t.id}>{t.nom}</option>)}
-          </select>
-          <button type="button" onClick={() => setView({ reset: true })} style={ghostBtn}>🇹🇳 Vue Tunisie</button>
+        {/* Barre d'outils de la carte */}
+        <div style={{ position: 'absolute', top: '16px', left: '16px', right: '16px', zIndex: 1000, display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'space-between', pointerEvents: 'none' }}>
+          <div className="gp-glass" style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 14px', borderRadius: '14px', pointerEvents: 'auto' }}>
+            <Stat valeur={stats.reseau} label="points du réseau" />
+            <span style={{ width: 1, alignSelf: 'stretch', background: C.line }} />
+            <Stat valeur={stats.concurrents} label="concurrents" />
+            {stats.ca12 > 0 && (
+              <>
+                <span style={{ width: 1, alignSelf: 'stretch', background: C.line }} />
+                <Stat valeur={formatCompact(stats.ca12)} label="TND CA 12 mois" accent />
+              </>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '8px', pointerEvents: 'auto', alignItems: 'flex-start' }}>
+            <div className="gp-glass gp-seg" style={{ display: 'flex', padding: '4px', borderRadius: '12px', gap: '2px' }}>
+              {FONDS.map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setFond(k)} style={{ border: 'none', borderRadius: '9px', padding: '7px 11px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: fond === k ? C.ink : 'transparent', color: fond === k ? 'white' : C.muted }}>{label}</button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setView({ reset: true })} className="gp-glass" style={{ border: 'none', borderRadius: '12px', padding: '9px 13px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', color: C.text, display: 'flex', alignItems: 'center', gap: '7px' }}>
+              <Icon name="crosshair" size={15} /> Tunisie
+            </button>
+          </div>
         </div>
+
+        {/* Légende : un clic sur un type filtre la carte */}
+        {types.length > 0 && (
+          <div className="gp-glass gp-legend" style={{ position: 'absolute', left: '16px', bottom: '24px', zIndex: 1000, borderRadius: '14px', padding: '10px', minWidth: '200px' }}>
+            <div style={{ ...surtitre, padding: '2px 8px 6px', display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="layers" size={13} /> Légende</div>
+            {[{ id: 'tous', nom: 'Tous les types', couleur: null }, ...types].map((t) => {
+              const actif = filtreType === t.id;
+              const nb = t.id === 'tous' ? points.length : (compteParType[t.id] || 0);
+              return (
+                <button key={t.id} type="button" className="gp-legend-item" onClick={() => setFiltreType(actif && t.id !== 'tous' ? 'tous' : t.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '9px', width: '100%', border: 'none', background: actif ? C.brandSoft : 'transparent', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', fontSize: '12.5px', color: actif ? C.brandDark : C.body, fontWeight: actif ? 600 : 500, textAlign: 'left' }}>
+                  {t.couleur ? <span style={{ width: 11, height: 11, borderRadius: '50%', background: t.couleur, boxShadow: '0 0 0 2px white, 0 0 0 3px ' + t.couleur + '55' }} /> : <Icon name="layers" size={12} />}
+                  <span style={{ flex: 1 }}>{t.nom}</span>
+                  <span className="num" style={{ color: C.faint, fontSize: '11.5px' }}>{nb}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <ProMap
           points={pointsVisibles}
           typesById={typesById}
@@ -338,10 +418,37 @@ export default function ProPage() {
           onDragSimulated={(ll) => poser(ll.lat, ll.lng, 'pin_manuel')}
           view={view}
           ventes={ventes}
+          fond={fond}
           selectedGouv={tab === 'demographie' ? gouvDemo : null}
           zoneKm={tab === 'simuler' && position ? rayonKm : null}
         />
       </section>
     </div>
+  );
+}
+
+const FONDS = [['clair', 'Clair'], ['plan', 'Plan'], ['satellite', 'Satellite']];
+
+function formatCompact(n) {
+  if (n >= 1e6) return (Math.round(n / 1e5) / 10).toLocaleString('fr-FR') + ' M';
+  if (n >= 1e3) return Math.round(n / 1e3).toLocaleString('fr-FR') + ' k';
+  return Math.round(n).toLocaleString('fr-FR');
+}
+
+function Stat({ valeur, label, accent }) {
+  return (
+    <div style={{ lineHeight: 1.15 }}>
+      <div className="num" style={{ fontSize: '17px', fontWeight: 700, color: accent ? C.brand : C.text, letterSpacing: '-.01em' }}>{valeur}</div>
+      <div style={{ fontSize: '10.5px', color: C.muted, fontWeight: 500 }}>{label}</div>
+    </div>
+  );
+}
+
+function Chargement({ texte }) {
+  return (
+    <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', color: C.muted, fontSize: '13px' }}>
+      <Logo size={48} />
+      {texte}
+    </main>
   );
 }

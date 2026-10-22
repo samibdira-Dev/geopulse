@@ -2,18 +2,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { champsCA, simuler } from '../lib/simulation';
 import { chargerGrille } from '../lib/population';
-import { Message, labelStyle, inputStyle } from './ui';
+import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
+import Icon from './icons';
 
 const RAYONS = [0.5, 1, 2, 3, 5];
 const fmt = (n) => (n == null ? '—' : Math.round(n).toLocaleString('fr-FR'));
 const km = (d) => (d < 1 ? `${Math.round(d * 1000)} m` : `${(Math.round(d * 10) / 10).toLocaleString('fr-FR')} km`);
 
-function Carte({ titre, valeur, detail, couleur = '#0f172a', fond = 'white' }) {
+function Carte({ icon, titre, valeur, detail, couleur = C.text, children }) {
   return (
-    <div style={{ background: fond, border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px' }}>
-      <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>{titre}</div>
-      <div style={{ fontSize: '18px', fontWeight: 'bold', color: couleur, marginTop: '2px' }}>{valeur}</div>
-      {detail && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>{detail}</div>}
+    <div style={{ ...carte, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{ ...surtitre, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name={icon} size={13} />{titre}</div>
+      <div className="num" style={{ fontSize: '21px', fontWeight: 700, color: couleur, letterSpacing: '-.02em', marginTop: '4px' }}>{valeur}</div>
+      {children}
+      {detail && <div style={{ fontSize: '11.5px', color: C.muted, lineHeight: 1.45, marginTop: '2px' }}>{detail}</div>}
     </div>
   );
 }
@@ -51,18 +53,15 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div>
-        <h3 style={{ margin: '0 0 4px 0', color: '#0f172a', fontSize: '16px' }}>🎯 Simulateur d’emplacement</h3>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '12px' }}>
-          Cliquez sur la carte pour placer l’emplacement à étudier, puis choisissez la taille de la zone.
-        </p>
-      </div>
+      <SectionTitle icon="target" title="Simulateur d’emplacement">
+        Cliquez sur la carte pour placer l’emplacement à étudier, puis choisissez la taille de la zone.
+      </SectionTitle>
 
       <div>
         <label style={labelStyle}>Rayon de la zone de chalandise</label>
-        <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '3px', marginTop: '6px', background: C.bg, border: '1px solid ' + C.line, borderRadius: '11px', padding: '3px' }}>
           {RAYONS.map((r) => (
-            <button key={r} type="button" onClick={() => onRayon(r)} style={{ padding: '5px 10px', borderRadius: '14px', border: '1px solid ' + (r === rayonKm ? '#2563eb' : '#cbd5e1'), background: r === rayonKm ? '#dbeafe' : 'white', color: r === rayonKm ? '#1d4ed8' : '#475569', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}>
+            <button key={r} type="button" onClick={() => onRayon(r)} style={{ flex: 1, padding: '7px 0', borderRadius: '8px', border: 'none', background: r === rayonKm ? 'white' : 'transparent', color: r === rayonKm ? C.brand : C.muted, boxShadow: r === rayonKm ? '0 1px 3px rgba(15,23,42,.12)' : 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
               {km(r)}
             </button>
           ))}
@@ -76,54 +75,70 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
       </div>
 
       {!position && (
-        <div style={{ border: '2px dashed #cbd5e1', borderRadius: '8px', padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
-          Aucun emplacement sélectionné.
-        </div>
+        <Empty icon="crosshair">Aucun emplacement sélectionné.<br />Cliquez sur la carte pour lancer l’étude.</Empty>
       )}
 
       {res && (
         <>
-          <div style={{ background: '#dbeafe', color: '#1e40af', padding: '8px 12px', borderRadius: '6px', fontSize: '13px' }}>
-            <b>{res.gouvernorat || 'Gouvernorat inconnu'}</b>{position.quartier ? ` · ${position.quartier}` : ''}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: C.body }}>
+            <Icon name="pin" size={16} style={{ color: C.violet }} />
+            <b style={{ color: C.text }}>{res.gouvernorat || 'Gouvernorat inconnu'}</b>{position.quartier ? <span style={{ color: C.muted }}>· {position.quartier}</span> : null}
+            <span style={{ marginLeft: 'auto', fontSize: '11px', color: C.faint }}>rayon {km(rayonKm)}</span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <Carte
-              titre="CA mensuel estimé"
-              valeur={res.caEstime != null ? `${fmt(res.caEstime)} TND` : '—'}
-              detail={huff
+          <div style={{ background: 'radial-gradient(120% 140% at 100% 0%, #4c1d95 0%, #1e1b4b 45%, #0b1020 100%)', borderRadius: '18px', padding: '18px', color: 'white', position: 'relative', overflow: 'hidden', boxShadow: '0 12px 30px rgba(30,27,75,.35)' }}>
+            <div style={{ position: 'absolute', right: '-30px', top: '-30px', width: '140px', height: '140px', borderRadius: '50%', border: '1px solid rgba(255,255,255,.08)' }} />
+            <div style={{ position: 'absolute', right: '-5px', top: '-5px', width: '90px', height: '90px', borderRadius: '50%', border: '1px solid rgba(255,255,255,.10)' }} />
+            <div style={{ fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '.1em', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="wallet" size={13} />CA mensuel estimé</div>
+            <div className="num" style={{ fontSize: '34px', fontWeight: 800, letterSpacing: '-.03em', marginTop: '4px' }}>
+              {res.caEstime != null ? fmt(res.caEstime) : '—'}<span style={{ fontSize: '15px', fontWeight: 600, color: '#c7d2fe', marginLeft: '6px' }}>TND</span>
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#c7d2fe', lineHeight: 1.5, marginTop: '4px', maxWidth: '300px' }}>
+              {huff
                 ? [res.caParM2 != null ? `${fmt(res.caParM2)} TND/m²` : null, `${fmt(res.habitantsCaptes)} habitants captés`,
                   `${(Math.round(res.caParHabitant * 100) / 100).toLocaleString('fr-FR')} TND/hab./mois (${res.sourceCA === 'ventes' ? 'ventes' : 'CA'} de ${res.nbValeursCA} points)`].filter(Boolean).join(' · ')
                 : res.sourceCA === 'ventes' ? `Ventes réelles de ${res.nbValeursCA} points (12 mois), ajustées de la cannibalisation`
                 : res.sourceCA === 'champ' ? `Médiane de ${res.nbValeursCA} points, ajustée de la cannibalisation` : 'Pas encore de ventes importées'}
-              couleur="#5b21b6"
-              fond="#f5f3ff"
-            />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <Carte
+              icon="split"
               titre="Cannibalisation"
-              valeur={<span style={{ color: niveau.color }}>{niveau.label} ({Math.round(tauxCannib * 100)} %)</span>}
+              valeur={<span style={{ color: niveau.color }}>{Math.round(tauxCannib * 100)} %</span>}
               detail={huff && res.transfert > 0 ? `${fmt(res.transfert)} TND/mois pris à vos points voisins`
                 : res.plusProche ? `PDV le plus proche à ${km(res.plusProche.distance)}` : 'Aucun PDV validé'}
-            />
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <div style={{ flex: 1, height: '5px', borderRadius: '5px', background: '#eef0f4', overflow: 'hidden' }}>
+                  <div style={{ width: Math.max(3, Math.min(100, tauxCannib * 100)) + '%', height: '100%', borderRadius: '5px', background: niveau.color }} />
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: niveau.color }}>{niveau.label}</span>
+              </div>
+            </Carte>
             <Carte
-              titre="Population de la zone"
-              valeur={res.population != null ? `${fmt(res.population)} hab.` : '—'}
+              icon="users"
+              titre="Population"
+              valeur={res.population != null ? `${fmt(res.population)}` : '—'}
               detail={res.population == null ? 'Données de population indisponibles'
                 : [res.menages != null ? `${fmt(res.menages)} ménages` : null, `${fmt(res.densite)} hab./km²`,
                   res.sourcePopulation === 'gouvernorat' ? 'moyenne du gouvernorat' : null].filter(Boolean).join(' · ')}
             />
             <Carte
-              titre="Concurrents dans la zone"
+              icon="store"
+              titre="Concurrents"
               valeur={res.concurrentsZone.length}
+              couleur={res.concurrentsZone.length ? C.danger : C.text}
               detail={res.plusProcheConcurrent ? `Le plus proche à ${km(res.plusProcheConcurrent.distance)}` : 'Aucun concurrent saisi'}
             />
+            <Carte
+              icon="chart"
+              titre="Revenu moyen"
+              valeur={res.revenu != null ? <>{fmt(res.revenu)} <span style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}>TND</span></> : '—'}
+              detail={res.revenu != null ? `Gouvernorat · ${res.delegations} délégations` : 'Non disponible'}
+            />
           </div>
-
-          {res.revenu != null && (
-            <div style={{ fontSize: '12px', color: '#475569' }}>
-              Revenu moyen du gouvernorat : <b>{fmt(res.revenu)} TND</b> ({res.delegations} délégations)
-            </div>
-          )}
 
           {res.sourceCA !== 'ventes' && champsDispo.length > 1 && (
             <div>
@@ -141,14 +156,18 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
           )}
 
           {res.reseauProches.length > 0 && (
-            <div style={{ fontSize: '12px', color: '#334155' }}>
-              <b>Vos PDV qui partagent la zone :</b>
-              {res.reseauProches.map((p) => <div key={p.id}>· {p.nom} — {km(p.distance)}</div>)}
+            <div style={{ ...carte, padding: '12px 14px' }}>
+              <div style={{ ...surtitre, marginBottom: '6px' }}>Vos points qui partagent la zone</div>
+              {res.reseauProches.map((p) => (
+                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', padding: '5px 0', borderTop: '1px solid ' + C.line, color: C.body }}>
+                  <span>{p.nom}</span><span className="num" style={{ color: C.muted }}>{km(p.distance)}</span>
+                </div>
+              ))}
             </div>
           )}
 
-          <details style={{ fontSize: '11px', color: '#64748b' }}>
-            <summary style={{ cursor: 'pointer' }}>Méthode de calcul</summary>
+          <details style={{ fontSize: '11.5px', color: C.muted }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 600, color: C.body }}>Méthode de calcul</summary>
             <p style={{ margin: '6px 0 0', lineHeight: 1.5 }}>
               Zone : cercle de {km(rayonKm)} autour du point (à vol d’oiseau). Population : habitants des carrés de 250 m de la grille
               High Resolution Settlement Layer (Meta et CIESIN, licence CC BY 4.0). Ménages : population ÷ taille moyenne des ménages du gouvernorat (INS).
@@ -169,8 +188,8 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
             </p>
           </details>
 
-          <button type="button" onClick={onAjouter} style={{ background: '#10b981', color: 'white', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}>
-            ➕ Enregistrer un point à cet emplacement
+          <button type="button" onClick={onAjouter} style={btn()}>
+            <Icon name="plus" size={16} /> Enregistrer un point à cet emplacement
           </button>
         </>
       )}
