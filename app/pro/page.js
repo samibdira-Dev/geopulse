@@ -9,6 +9,7 @@ import SocieteSetup from '../../components/SocieteSetup';
 import PointForm from '../../components/PointForm';
 import PointsList from '../../components/PointsList';
 import ValidationPanel from '../../components/ValidationPanel';
+import JournalPanel from '../../components/JournalPanel';
 import TeamPanel from '../../components/TeamPanel';
 import TypesAdmin from '../../components/TypesAdmin';
 import VentesImport from '../../components/VentesImport';
@@ -40,7 +41,7 @@ export default function ProPage() {
   const [view, setView] = useState(null);
   const [geo, setGeo] = useState(null);
   const [ventes, setVentes] = useState({}); // id du point -> synthèse des ventes (ventes_resume)
-  const [filtreType, setFiltreType] = useState('tous');
+  const [filtreTypes, setFiltreTypes] = useState([]); // types affichés sur la carte ; vide = tous
   const [info, setInfo] = useState(null);
   const [demographie, setDemographie] = useState([]);
   const [rayonKm, setRayonKm] = useState(1);
@@ -107,7 +108,7 @@ export default function ProPage() {
   const changerSociete = (id) => {
     setChoix(id);
     setPoints([]); setTypes([]); setChamps([]); setMembres([]);
-    setPosition(null); setEditing(null); setFiltreType('tous'); setTab('nouveau');
+    setPosition(null); setEditing(null); setFiltreTypes([]); setTab('nouveau');
     try { window.localStorage.setItem('geopulse_societe', id); } catch (e) { /* ignoré */ }
   };
 
@@ -155,8 +156,8 @@ export default function ProPage() {
     [membres]
   );
   const pointsVisibles = useMemo(
-    () => (filtreType === 'tous' ? points : points.filter((p) => p.type_id === filtreType)),
-    [points, filtreType]
+    () => (filtreTypes.length ? points.filter((p) => filtreTypes.includes(p.type_id)) : points),
+    [points, filtreTypes]
   );
   const aValiderCount = points.filter((p) => p.statut === 'a_valider').length;
   const compteParType = useMemo(() => {
@@ -251,6 +252,7 @@ export default function ProPage() {
     ['demographie', 'users', 'Démo\u00ADgraphie'],
     ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'chart', 'Ventes']] : []),
     ...(role === 'admin' ? [['types', 'tag', 'Types'], ['equipe', 'team', 'Équipe']] : []),
+    ...(manager ? [['journal', 'history', 'Journal']] : []),
   ];
   const email = session.user.email || '';
   const initiales = ((membership.nom_affiche || email).match(/[A-Za-zÀ-ÿ]/g) || ['?']).slice(0, 2).join('').toUpperCase();
@@ -357,8 +359,12 @@ export default function ProPage() {
               <TypesAdmin societeId={membership.societe_id} types={types} champs={champs} onChanged={charger} />
             )}
 
+            {tab === 'journal' && manager && (
+              <JournalPanel societeId={membership.societe_id} auteurs={auteurs} typesById={typesById} champs={champs} />
+            )}
+
             {tab === 'equipe' && role === 'admin' && (
-              <TeamPanel societeId={membership.societe_id} membres={membres} userId={userId} onChanged={() => { charger(); chargerMembership(); }} />
+              <TeamPanel societeId={membership.societe_id} societeNom={societe ? societe.nom : ''} membres={membres} userId={userId} onChanged={() => { charger(); chargerMembership(); }} />
             )}
           </div>
         </div>
@@ -390,15 +396,15 @@ export default function ProPage() {
           </div>
         </div>
 
-        {/* Légende : un clic sur un type filtre la carte */}
+        {/* Légende : un clic ajoute ou retire un type de la carte ; « Tous les types » les réaffiche tous */}
         {types.length > 0 && (
           <div className="gp-glass gp-legend" style={{ position: 'absolute', left: '16px', bottom: '24px', zIndex: 1000, borderRadius: '14px', padding: '10px', minWidth: '200px' }}>
             <div style={{ ...surtitre, padding: '2px 8px 6px', display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="layers" size={13} /> Légende</div>
             {[{ id: 'tous', nom: 'Tous les types', couleur: null }, ...types].map((t) => {
-              const actif = filtreType === t.id;
+              const actif = t.id === 'tous' ? !filtreTypes.length : filtreTypes.includes(t.id);
               const nb = t.id === 'tous' ? points.length : (compteParType[t.id] || 0);
               return (
-                <button key={t.id} type="button" className="gp-legend-item" onClick={() => setFiltreType(actif && t.id !== 'tous' ? 'tous' : t.id)}
+                <button key={t.id} type="button" className="gp-legend-item" onClick={() => setFiltreTypes((cur) => (t.id === 'tous' ? [] : actif ? cur.filter((x) => x !== t.id) : [...cur, t.id]))}
                   style={{ display: 'flex', alignItems: 'center', gap: '9px', width: '100%', border: 'none', background: actif ? C.brandSoft : 'transparent', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', fontSize: '12.5px', color: actif ? C.brandDark : C.body, fontWeight: actif ? 600 : 500, textAlign: 'left' }}>
                   {t.couleur ? <span style={{ width: 11, height: 11, borderRadius: '50%', background: t.couleur, boxShadow: '0 0 0 2px white, 0 0 0 3px ' + t.couleur + '55' }} /> : <Icon name="layers" size={12} />}
                   <span style={{ flex: 1 }}>{t.nom}</span>
