@@ -4,6 +4,7 @@ import { champsCA, simuler } from '../lib/simulation';
 import { chargerGrille } from '../lib/population';
 import { calibrerModele, combinerTests, ecartMethodes, fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
 import { calculerRentabilite, parametresDuType } from '../lib/rentabilite';
+import { depenseDuType, potentielMarche, reperesReseau } from '../lib/marche';
 import { NB_JUMEAUX, estimerParJumeaux, preparerReseau, profilSite, testerJumeaux } from '../lib/jumeaux';
 import { REGLAGE_DEFAUT } from '../lib/simulation';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
@@ -102,12 +103,16 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   );
 
   const huff = res && res.methodeCA === 'huff';
-  const jum = useMemo(() => {
-    if (!huff || !reseauJ || !testJ) return null;
+  // Profil du site étudié (habitants à 1 et 3 km, pression concurrentielle, surface).
+  const profilEtudie = useMemo(() => {
+    if (!res || !reseauJ || !grille) return null;
     const surface = Number(surfaceSaisie) > 0 ? Number(surfaceSaisie) : reseauJ.surfaceMediane;
-    const profil = profilSite(grille, position.lat, position.lng, rayonKm, reseauJ.concurrents, surface);
-    return estimerParJumeaux(reseauJ, profil, { typeId: typeSaisi || null, theta: testJ.theta });
-  }, [huff, reseauJ, testJ, surfaceSaisie, grille, position, rayonKm, typeSaisi]);
+    return profilSite(grille, position.lat, position.lng, rayonKm, reseauJ.concurrents, surface);
+  }, [res, reseauJ, surfaceSaisie, grille, position, rayonKm]);
+  const jum = useMemo(
+    () => (huff && profilEtudie && testJ ? estimerParJumeaux(reseauJ, profilEtudie, { typeId: typeSaisi || null, theta: testJ.theta }) : null),
+    [huff, profilEtudie, reseauJ, testJ, typeSaisi]
+  );
   // CA central : moyenne des deux méthodes quand les jumeaux sont disponibles.
   const caCentral = !res ? null : jum && res.caEstime != null ? Math.round((res.caEstime + jum.estime) / 2) : res.caEstime;
   const ecart = jum ? ecartMethodes(res.caEstime, jum.estime) : null;
@@ -128,6 +133,17 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     caBas: plage ? plage.bas : null,
     transfert: huff ? res.transfert : null,
   }) : null;
+  // Marché (étape 5) : dépense du secteur du type étudié, sinon du premier type de point de vente qui a un secteur.
+  const typeMarche = depenseDuType(typeRenta) ? typeRenta : typesExploitation.find((t) => depenseDuType(t)) || typeRenta;
+  const depense = depenseDuType(typeMarche);
+  const marche = res && depense ? potentielMarche(res.population, depense.mensuelle, res.gouvernorat) : null;
+  const reperes = useMemo(() => reperesReseau(reseauJ, depense ? depense.mensuelle : 0), [reseauJ, depense && depense.mensuelle]);
+  const partCaptee = marche && caCentral != null && !masque ? caCentral / marche.potentiel : null;
+  const pressionRel = profilEtudie && reperes && reperes.pressionMediane > 0 ? profilEtudie.pression / reperes.pressionMediane : null;
+  const niveauPression = !profilEtudie ? null : profilEtudie.pression === 0 ? { label: 'Aucun concurrent', color: C.success }
+    : pressionRel == null ? null : pressionRel < 0.67 ? { label: 'Plus faible que vos zones', color: C.success }
+    : pressionRel <= 1.5 ? { label: 'Comparable à vos zones', color: C.brand } : { label: 'Plus forte que vos zones', color: C.danger };
+  const pct = (v) => `${(Math.round(v * 1000) / 10).toLocaleString('fr-FR')} %`;
   const solidite = !renta || renta.margeSecurite == null ? null
     : renta.margeSecurite >= 0.25 ? { label: 'Solide', color: C.success }
     : renta.margeSecurite >= 0 ? { label: 'Fragile', color: C.warning } : { label: 'Sous le point mort', color: C.danger };
@@ -258,6 +274,51 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   </div>
                 </details>
               )}
+            </div>
+          )}
+
+          {res && profilEtudie && (
+            <div style={{ ...carte, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ ...surtitre, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="globe" size={13} />Marché de la zone</div>
+                {depense && depense.secteur && <span style={{ fontSize: '11px', fontWeight: 600, color: C.brandDark, background: C.brandSoft, padding: '3px 9px', borderRadius: '999px' }}>{depense.secteur.libelle}</span>}
+              </div>
+              {marche ? (
+                <div>
+                  <div style={{ fontSize: '11.5px', color: C.muted }}>Potentiel de marché : dépense des habitants dans le secteur</div>
+                  <div className="num" style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '-.02em', color: C.text }}>{fmt(marche.potentiel)} <span style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}>TND/mois</span></div>
+                  <div style={{ fontSize: '11px', color: C.muted, lineHeight: 1.45 }}>
+                    {fmt(res.population)} habitants × {(Math.round(depense.mensuelle * 10) / 10).toLocaleString('fr-FR')} TND/hab./mois
+                    {marche.region ? ` × ${(Math.round(marche.indice * 100) / 100).toLocaleString('fr-FR')} (niveau de dépense ${marche.region})` : ''}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: '11.5px', color: C.warning, lineHeight: 1.5 }}>
+                  Choisissez le secteur du type « {typeMarche ? typeMarche.nom : 'point de vente'} » dans l’onglet Types (administrateur) pour calculer le potentiel de marché.
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                {partCaptee != null && (
+                  <div style={{ background: C.bg, borderRadius: '10px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '10.5px', color: C.muted, fontWeight: 600 }}>Part captée par le site</div>
+                    <div className="num" style={{ fontSize: '14px', fontWeight: 700, color: C.text }}>{pct(partCaptee)}</div>
+                    {reperes && reperes.partMediane != null && <div style={{ fontSize: '10.5px', color: C.muted }}>vos points : {pct(reperes.partMediane)}</div>}
+                  </div>
+                )}
+                <div style={{ background: C.bg, borderRadius: '10px', padding: '8px 10px' }}>
+                  <div style={{ fontSize: '10.5px', color: C.muted, fontWeight: 600 }}>Pression concurrentielle</div>
+                  <div className="num" style={{ fontSize: '14px', fontWeight: 700, color: niveauPression ? niveauPression.color : C.text }}>{fmt(profilEtudie.pression)} m²<span style={{ fontSize: '10.5px', fontWeight: 600, color: C.muted }}> /1 000 hab.</span></div>
+                  {reperes && reperes.pressionMediane != null && <div style={{ fontSize: '10.5px', color: C.muted }}>vos points : {fmt(reperes.pressionMediane)} m²</div>}
+                </div>
+              </div>
+              <div style={{ fontSize: '11.5px', color: C.body, lineHeight: 1.5 }}>
+                {niveauPression && <>Concurrence : <b style={{ color: niveauPression.color }}>{niveauPression.label.toLowerCase()}</b>. </>}
+                {partCaptee != null && reperes && reperes.partMediane != null && (partCaptee > reperes.partMediane * 1.5
+                  ? <span style={{ color: C.warning }}>Le site capterait une part du marché nettement plus forte que vos points : estimation optimiste, à vérifier.</span>
+                  : partCaptee < reperes.partMediane / 1.5
+                    ? 'Le site capterait une part du marché plus faible que vos points : la zone peut porter davantage.'
+                    : 'Part du marché captée cohérente avec celle de vos points.')}
+              </div>
             </div>
           )}
 
@@ -454,6 +515,15 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                       1 000 habitants dans la zone, la surface et le type d’exploitation, puis on retient les {NB_JUMEAUX} plus ressemblants.
                       Leur CA, ajusté de l’écart de surface (exposant {fmtReglage(testJ.theta)}, choisi sur vos ventes), est moyenné en donnant
                       plus de poids aux plus ressemblants. Le CA affiché est la moyenne des deux méthodes.
+                    </>
+                  )}
+                  {marche && (
+                    <>
+                      {' '}Potentiel de marché : habitants de la zone × dépense mensuelle par habitant du secteur
+                      {depense.saisie ? ' (valeur saisie par votre administrateur)' : depense.secteur ? ` (INS, enquête budget des ménages 2021 : ${depense.secteur.postes})` : ''}
+                      {' '}× niveau de dépense de la région rapporté à la moyenne nationale (INS 2021, 5 468 TND par personne et par an).
+                      Part captée : CA estimé ÷ potentiel. Pression concurrentielle : m² de vente des concurrents à moins de {km(rayonKm)} pour
+                      1 000 habitants (surface inconnue : médiane des concurrents saisis).
                     </>
                   )}
                   {' '}Fiabilité : chacun de vos points ayant un CA connu est retiré à son tour et estimé à partir des autres ;
