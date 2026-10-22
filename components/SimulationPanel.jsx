@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { champsCA, simuler } from '../lib/simulation';
 import { chargerGrille } from '../lib/population';
+import { fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
 import Icon from './icons';
 
@@ -17,6 +18,17 @@ function Carte({ icon, titre, valeur, detail, couleur = C.text, children }) {
       {children}
       {detail && <div style={{ fontSize: '11.5px', color: C.muted, lineHeight: 1.45, marginTop: '2px' }}>{detail}</div>}
     </div>
+  );
+}
+
+const NOTES = { A: '#059669', B: '#0d9488', C: '#d97706', D: '#dc2626' };
+function NoteBadge({ note, clair }) {
+  const c = NOTES[note] || NOTES.D;
+  return (
+    <span title={`Confiance ${note}`} style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: '5px', padding: clair ? '0' : '3px 9px 3px 4px', borderRadius: '999px', background: clair ? 'transparent' : 'rgba(255,255,255,.1)', fontSize: '11px', fontWeight: 600, color: clair ? c : '#e0e7ff' }}>
+      <span style={{ width: clair ? 34 : 20, height: clair ? 34 : 20, borderRadius: clair ? 10 : '50%', background: c, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: clair ? '16px' : '11px', fontWeight: 800 }}>{note}</span>
+      {!clair && 'Confiance'}
+    </span>
   );
 }
 
@@ -44,6 +56,19 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     () => (position ? simuler({ position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceNouveau: surfaceSaisie }) : null),
     [position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceSaisie]
   );
+
+  // Test « un magasin caché » : ne dépend pas de l'emplacement étudié, recalculé quand les données ou le rayon changent.
+  // Lancé après l'affichage pour ne pas bloquer le simulateur sur un grand réseau.
+  const [test, setTest] = useState(undefined);
+  useEffect(() => {
+    setTest(undefined);
+    if (!grille) return undefined;
+    const t = setTimeout(() => setTest(testerModele({ rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA })), 50);
+    return () => clearTimeout(t);
+  }, [rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA]);
+  const confiance = res && test !== undefined ? noteConfiance(test, res) : null;
+  const plage = confiance && confiance.note !== 'D' ? fourchette(test, res.caEstime) : null;
+  const masque = confiance && confiance.note === 'D' && res.caEstime != null;
 
   const huff = res && res.methodeCA === 'huff';
   const tauxCannib = !res ? 0 : huff ? res.cannibalisationCA : res.cannibalisation;
@@ -89,10 +114,18 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
           <div style={{ background: 'radial-gradient(120% 140% at 100% 0%, #4c1d95 0%, #1e1b4b 45%, #0b1020 100%)', borderRadius: '18px', padding: '18px', color: 'white', position: 'relative', overflow: 'hidden', boxShadow: '0 12px 30px rgba(30,27,75,.35)' }}>
             <div style={{ position: 'absolute', right: '-30px', top: '-30px', width: '140px', height: '140px', borderRadius: '50%', border: '1px solid rgba(255,255,255,.08)' }} />
             <div style={{ position: 'absolute', right: '-5px', top: '-5px', width: '90px', height: '90px', borderRadius: '50%', border: '1px solid rgba(255,255,255,.10)' }} />
-            <div style={{ fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '.1em', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="wallet" size={13} />CA mensuel estimé</div>
-            <div className="num" style={{ fontSize: '34px', fontWeight: 800, letterSpacing: '-.03em', marginTop: '4px' }}>
-              {res.caEstime != null ? fmt(res.caEstime) : '—'}<span style={{ fontSize: '15px', fontWeight: 600, color: '#c7d2fe', marginLeft: '6px' }}>TND</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+              <div style={{ fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '.1em', color: '#a5b4fc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="wallet" size={13} />CA mensuel estimé</div>
+              {confiance && <NoteBadge note={confiance.note} />}
             </div>
+            <div className="num" style={{ fontSize: '34px', fontWeight: 800, letterSpacing: '-.03em', marginTop: '4px' }}>
+              {res.caEstime != null && !masque ? fmt(res.caEstime) : '—'}<span style={{ fontSize: '15px', fontWeight: 600, color: '#c7d2fe', marginLeft: '6px' }}>TND</span>
+            </div>
+            {plage && (
+              <div className="num" style={{ fontSize: '12.5px', color: '#e0e7ff', fontWeight: 500 }}>
+                Probablement entre <b>{fmt(plage.bas)}</b> et <b>{fmt(plage.haut)}</b> TND
+              </div>
+            )}
             <div style={{ fontSize: '11.5px', color: '#c7d2fe', lineHeight: 1.5, marginTop: '4px', maxWidth: '300px' }}>
               {huff
                 ? [res.caParM2 != null ? `${fmt(res.caParM2)} TND/m²` : null, `${fmt(res.habitantsCaptes)} habitants captés`,
@@ -101,6 +134,37 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                 : res.sourceCA === 'champ' ? `Médiane de ${res.nbValeursCA} points, ajustée de la cannibalisation` : 'Pas encore de ventes importées'}
             </div>
           </div>
+
+          {confiance && (
+            <div style={{ ...carte, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <NoteBadge note={confiance.note} clair />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: C.text }}>{confiance.label}</div>
+                  <div style={{ fontSize: '11.5px', color: C.muted }}>
+                    {test && test.n >= 3 && test.erreurMediane != null
+                      ? `Modèle testé sur ${test.n} de vos points : écart médian de ${Math.round(test.erreurMediane * 100)} % entre estimation et ventes réelles`
+                      : 'Pas assez de points avec un CA connu pour tester le modèle'}
+                  </div>
+                </div>
+              </div>
+              {(confiance.conseil || masque) && <div style={{ fontSize: '11.5px', color: C.warning }}>{masque ? 'CA non affiché : ' : ''}{confiance.conseil}</div>}
+              {test && test.details.length > 0 && (
+                <details style={{ fontSize: '11.5px', color: C.muted }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 600, color: C.body }}>Détail du test (plus grands écarts d’abord)</summary>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', columnGap: '10px', rowGap: '3px', marginTop: '6px' }}>
+                    <span style={surtitre}>Point</span><span style={surtitre}>Réel</span><span style={surtitre}>Estimé</span><span style={surtitre}>Écart</span>
+                    {test.details.map((d) => [
+                      <span key={d.id + 'n'} style={{ color: C.body, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.nom}</span>,
+                      <span key={d.id + 'r'} className="num" style={{ textAlign: 'right' }}>{fmt(d.reel)}</span>,
+                      <span key={d.id + 'e'} className="num" style={{ textAlign: 'right' }}>{fmt(d.estime)}</span>,
+                      <span key={d.id + 'x'} className="num" style={{ textAlign: 'right', color: Math.abs(d.erreur) > 0.3 ? C.danger : C.body }}>{d.erreur >= 0 ? '+' : ''}{Math.round(d.erreur * 100)} %</span>,
+                    ])}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <Carte
@@ -178,6 +242,10 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   (moyenne des 12 derniers mois de ventes, sinon le champ choisi) ; on retient la médiane, multipliée par les habitants captés
                   par le point étudié. Cannibalisation : CA que le point étudié prend à vos points voisins, en part de son CA.
                   Surface inconnue : surface médiane de vos points.
+                  {' '}Fiabilité : chacun de vos points ayant un CA connu est retiré à son tour et estimé à partir des autres ;
+                  l’écart médian avec ses ventes réelles mesure la précision du modèle sur votre réseau. La fourchette couvre 80 % des écarts
+                  observés. Note A : au moins 15 points testés et écart médian sous 15 % ; B : 8 points et 25 % ; C : au-delà ;
+                  D : moins de 5 points, pas de chiffre. Le site doit aussi avoir une densité de population proche de celles de votre réseau.
                 </>
               ) : (
                 <>
