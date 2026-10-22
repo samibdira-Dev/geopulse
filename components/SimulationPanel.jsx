@@ -2,11 +2,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { champsCA, simuler } from '../lib/simulation';
 import { chargerGrille } from '../lib/population';
-import { fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
+import { calibrerModele, fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
+import { REGLAGE_DEFAUT } from '../lib/simulation';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
 import Icon from './icons';
 
 const RAYONS = [0.5, 1, 2, 3, 5];
+const fmtReglage = (v) => v.toLocaleString('fr-FR');
 const fmt = (n) => (n == null ? '—' : Math.round(n).toLocaleString('fr-FR'));
 const km = (d) => (d < 1 ? `${Math.round(d * 1000)} m` : `${(Math.round(d * 10) / 10).toLocaleString('fr-FR')} km`);
 
@@ -20,6 +22,9 @@ function Carte({ icon, titre, valeur, detail, couleur = C.text, children }) {
     </div>
   );
 }
+
+// Réglages déjà calculés : points de la société (objet) -> rayon et champ CA -> { ventes, resultat }.
+const CALIBRAGES = new WeakMap();
 
 const NOTES = { A: '#059669', B: '#0d9488', C: '#d97706', D: '#dc2626' };
 function NoteBadge({ note, clair }) {
@@ -52,20 +57,35 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   // Surface du point simulé (m²) : vide = surface médiane de vos points.
   const [surfaceSaisie, setSurfaceSaisie] = useState('');
 
+  // Réglage du modèle sur les ventes (étape 2) puis test « un magasin caché » (étape 1). Ne dépend pas de
+  // l'emplacement étudié : recalculé quand les données ou le rayon changent, en tâche de fond, et gardé en
+  // mémoire tant que les points de la société ne sont pas rechargés.
+  const [calib, setCalib] = useState(undefined);
+  useEffect(() => {
+    if (!grille) { setCalib(undefined); return undefined; }
+    const params = { rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA };
+    const parRayon = CALIBRAGES.get(points) || new Map();
+    CALIBRAGES.set(points, parRayon);
+    const cle = `${rayonKm}|${cleCA}`;
+    const connu = parRayon.get(cle);
+    if (connu && connu.ventes === ventes) { setCalib(connu.resultat); return undefined; }
+    setCalib(undefined);
+    let annule = false;
+    calibrerModele(params, () => annule).then((r) => {
+      if (annule) return;
+      const resultat = r || { reglage: REGLAGE_DEFAUT, test: testerModele(params), testDefaut: null };
+      parRayon.set(cle, { ventes, resultat });
+      setCalib(resultat);
+    });
+    return () => { annule = true; };
+  }, [rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA]);
+  const test = calib ? calib.test : undefined;
+
   const res = useMemo(
-    () => (position ? simuler({ position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceNouveau: surfaceSaisie }) : null),
-    [position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceSaisie]
+    () => (position && (calib !== undefined || !grille) ? simuler({ position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceNouveau: surfaceSaisie, reglage: calib ? calib.reglage : REGLAGE_DEFAUT }) : null),
+    [position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceSaisie, calib]
   );
 
-  // Test « un magasin caché » : ne dépend pas de l'emplacement étudié, recalculé quand les données ou le rayon changent.
-  // Lancé après l'affichage pour ne pas bloquer le simulateur sur un grand réseau.
-  const [test, setTest] = useState(undefined);
-  useEffect(() => {
-    setTest(undefined);
-    if (!grille) return undefined;
-    const t = setTimeout(() => setTest(testerModele({ rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA })), 50);
-    return () => clearTimeout(t);
-  }, [rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA]);
   const confiance = res && test !== undefined ? noteConfiance(test, res) : null;
   const plage = confiance && confiance.note !== 'D' ? fourchette(test, res.caEstime) : null;
   const masque = confiance && confiance.note === 'D' && res.caEstime != null;
@@ -101,6 +121,10 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
 
       {!position && (
         <Empty icon="crosshair">Aucun emplacement sélectionné.<br />Cliquez sur la carte pour lancer l’étude.</Empty>
+      )}
+
+      {position && !res && (
+        <Empty icon="chart">Réglage du modèle sur vos ventes…</Empty>
       )}
 
       {res && (
@@ -148,6 +172,12 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   </div>
                 </div>
               </div>
+              {calib && calib.testDefaut && calib.reglage !== REGLAGE_DEFAUT && (
+                <div style={{ fontSize: '11.5px', color: C.success, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Icon name="checkCircle" size={14} />
+                  Modèle réglé sur vos ventes : écart ramené de {Math.round(calib.testDefaut.erreurMediane * 100)} % à {Math.round(calib.test.erreurMediane * 100)} %
+                </div>
+              )}
               {(confiance.conseil || masque) && <div style={{ fontSize: '11.5px', color: C.warning }}>{masque ? 'CA non affiché : ' : ''}{confiance.conseil}</div>}
               {test && test.details.length > 0 && (
                 <details style={{ fontSize: '11.5px', color: C.muted }}>
@@ -238,9 +268,13 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
               {huff ? (
                 <>
                   {' '}CA : chaque carré de 250 m partage ses habitants entre tous les points à moins de {km(rayonKm)} (les vôtres, les concurrents
-                  et le point étudié), au prorata de la surface (m²) ÷ distance². Le CA mensuel par habitant capté est mesuré sur vos points
-                  (moyenne des 12 derniers mois de ventes, sinon le champ choisi) ; on retient la médiane, multipliée par les habitants captés
-                  par le point étudié. Cannibalisation : CA que le point étudié prend à vos points voisins, en part de son CA.
+                  et le point étudié), au prorata de surface^α ÷ distance^β. Le CA de vos points (moyenne des 12 derniers mois de ventes,
+                  sinon le champ choisi) est comparé à leurs habitants captés^γ ; on retient le rapport médian, appliqué au point étudié.
+                  Réglage utilisé : α = {fmtReglage(calib ? calib.reglage.alpha : REGLAGE_DEFAUT.alpha)} (poids de la surface),
+                  β = {fmtReglage(calib ? calib.reglage.beta : REGLAGE_DEFAUT.beta)} (effet de la distance),
+                  γ = {fmtReglage(calib ? calib.reglage.gamma : REGLAGE_DEFAUT.gamma)} (rendement des habitants : sous 1, chaque habitant de plus
+                  rapporte un peu moins). Ces valeurs sont choisies automatiquement parmi 64 combinaisons, celle qui donne le plus petit
+                  écart au test sur vos ventes ; avec moins de 8 points testés, on garde α = 1, β = 2, γ = 1. Cannibalisation : CA que le point étudié prend à vos points voisins, en part de son CA.
                   Surface inconnue : surface médiane de vos points.
                   {' '}Fiabilité : chacun de vos points ayant un CA connu est retiré à son tour et estimé à partir des autres ;
                   l’écart médian avec ses ventes réelles mesure la précision du modèle sur votre réseau. La fourchette couvre 80 % des écarts
