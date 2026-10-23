@@ -12,6 +12,8 @@ import ValidationPanel from '../../components/ValidationPanel';
 import JournalPanel from '../../components/JournalPanel';
 import VisitesPanel from '../../components/VisitesPanel';
 import SaisonsPanel from '../../components/SaisonsPanel';
+import CouverturePanel from '../../components/CouverturePanel';
+import { hexEn } from '../../lib/couverture';
 import TeamPanel from '../../components/TeamPanel';
 import TypesAdmin from '../../components/TypesAdmin';
 import VentesImport from '../../components/VentesImport';
@@ -65,6 +67,10 @@ export default function ProPage() {
   const [zoneSim, setZoneSim] = useState({ type: 'cercle' }); // zone du simulateur : cercle ou temps de trajet
   // Sites du comparateur, gardés dans ce navigateur pour chaque société.
   const [sitesComp, setSitesComp] = useState([]);
+  // Carte de couverture en hexagones : taille, résultat du calcul, hexagone choisi.
+  const [tailleCouv, setTailleCouv] = useState(0.5);
+  const [couverture, setCouverture] = useState(null);
+  const [hexChoisi, setHexChoisi] = useState(-1);
   const [gouvDemo, setGouvDemo] = useState('Tous');
   const [carteDemo, setCarteDemo] = useState('densite');
   const requete = useRef(0);
@@ -217,12 +223,14 @@ export default function ProPage() {
   );
   const pointsVisibles = useMemo(() => {
     let out = filtreTypes.length ? points.filter((p) => filtreTypes.includes(p.type_id)) : points;
+    // Couverture : seulement le réseau sur la carte (les concurrents sont comptés dans l'info-bulle des hexagones).
+    if (tab === 'couverture') out = out.filter((p) => ['point_de_vente', 'client'].includes((typesById[p.type_id] || {}).categorie));
     if (tab === 'visites' && filtreVisites) {
       const ids = new Set(filtreVisites);
       out = out.filter((p) => ids.has(p.id));
     }
     return out;
-  }, [points, filtreTypes, tab, filtreVisites]);
+  }, [points, filtreTypes, tab, filtreVisites, typesById]);
   const aValiderCount = points.filter((p) => p.statut === 'a_valider').length;
   const compteParType = useMemo(() => {
     const out = {};
@@ -254,7 +262,10 @@ export default function ProPage() {
     setPosition((cur) => (cur && cur.lat === lat && cur.lng === lng ? { ...cur, quartier: a.quartier, adresse: a.adresse } : cur));
   }, [geo]);
 
-  const surClic = (latlng) => poser(latlng.lat, latlng.lng, 'pin_manuel');
+  // Onglet Couverture : un clic choisit l'hexagone au lieu de poser un point.
+  const surClic = (latlng) => (tab === 'couverture'
+    ? setHexChoisi(hexEn(couverture, latlng.lat, latlng.lng))
+    : poser(latlng.lat, latlng.lng, 'pin_manuel'));
 
   const utiliserGps = () => {
     if (!navigator.geolocation) { setInfo({ type: 'err', text: 'La géolocalisation n’est pas disponible sur cet appareil.' }); return; }
@@ -341,7 +352,7 @@ export default function ProPage() {
     ['points', 'list', 'Points'],
     ['visites', 'calendar', 'Visites'],
     ['demographie', 'users', 'Démo\u00ADgraphie'],
-    ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'upload', 'Import'], ['saisons', 'chart', 'Saisons']] : []),
+    ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'upload', 'Import'], ['saisons', 'chart', 'Saisons'], ['couverture', 'hexagon', 'Couver\u00ADture']] : []),
     ...(role === 'admin' ? [['types', 'tag', 'Types'], ['equipe', 'team', 'Équipe']] : []),
     ...(manager ? [['journal', 'history', 'Journal']] : []),
   ];
@@ -488,6 +499,12 @@ export default function ProPage() {
               <SaisonsPanel societeId={membership.societe_id} points={points} typesById={typesById} />
             )}
 
+            {tab === 'couverture' && manager && (
+              <CouverturePanel points={points} typesById={typesById} champs={champs} ventes={ventes} delegations={delegations}
+                taille={tailleCouv} onTaille={(t) => { setTailleCouv(t); setHexChoisi(-1); }} resultat={couverture} onResultat={setCouverture}
+                choisi={hexChoisi} onChoisir={setHexChoisi} onVoir={(lat, lng, zoom) => { setFeuille('ferme'); setView({ center: [lat, lng], zoom }); }} />
+            )}
+
             {tab === 'types' && role === 'admin' && (
               <TypesAdmin societeId={membership.societe_id} types={types} champs={champs} points={points} onChanged={charger} />
             )}
@@ -590,6 +607,8 @@ export default function ProPage() {
           carteDelegations={carteDemo}
           isochrone={tab === 'simuler' && position ? isochrone : null}
           zoneKm={tab === 'simuler' && position && zoneSim.type === 'cercle' ? rayonKm : null}
+          couverture={tab === 'couverture' && couverture && couverture.taille === tailleCouv ? couverture : null}
+          hexChoisi={hexChoisi}
         />
       </section>
     </div>

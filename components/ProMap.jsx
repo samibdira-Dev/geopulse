@@ -1,5 +1,5 @@
 'use client';
-import { MapContainer, TileLayer, Marker, CircleMarker, Popup, GeoJSON, Circle, ImageOverlay, ZoomControl, Pane, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, CircleMarker, Popup, GeoJSON, Circle, ImageOverlay, ZoomControl, Pane, Polygon, useMapEvents, useMap } from 'react-leaflet';
 import { depuisLe } from '../lib/visites';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
@@ -10,6 +10,7 @@ import { STATUTS, isManagerRole, valeurChamp } from '../lib/points';
 import { caMensuelMoyen, evolution } from '../lib/ventes';
 import { couleurDensite, couleurPauvrete } from '../lib/recensement';
 import { COULEURS_GENERATEURS, indiceNational, niveauPassage, scorePassage } from '../lib/generateurs';
+import { ETATS, couleurHex, hexEn, sommetsHex } from '../lib/couverture';
 
 // Pastille colorée selon le type du point ; l'anneau indique le statut de validation.
 // Dessinée sur le canvas (CircleMarker) : la carte reste fluide même avec des milliers de points.
@@ -119,6 +120,115 @@ function CoucheGenerateurs({ generateurs, actives, compact }) {
   );
 }
 
+// Carte de couverture : hexagones dessinés sur des tuiles de canvas (fluide même avec 150 000 hexagones),
+// avec une info-bulle au survol. Le clic passe par onSelectLocation (voir la page).
+const fmt = (n, d = 0) => n.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+function infoHex(res, h) {
+  const lieu = [h.delegation, h.gouvernorat].filter(Boolean).join(' · ') || 'Hors délégation';
+  const couvert = h.etat === ETATS.point || h.etat === ETATS.desservi;
+  const etat = h.etat === ETATS.point ? 'Couvert · vos points' : couvert ? 'Couvert · zone de vos points' : 'Non couvert';
+  let detail = '';
+  if (couvert && h.ratio != null) detail = `<br>CA de la zone : ${fmt(h.ratio, 2)} TND / hab. / mois`;
+  else if (!couvert && h.pot > 0) detail = `<br>Potentiel : <b>${fmt(Math.round(h.pot))} TND / mois</b> (${fmt(h.ratio, 2)} TND / hab.)`;
+  else if (h.horsReferences) detail = '<br>Moins dense que toutes vos zones : pas d’estimation';
+  return `<b>${lieu}</b><br><span style="color:${couvert ? '#15803d' : '#c2410c'};font-weight:600">${etat}</span>`
+    + `<br>${fmt(h.pop)} habitants${h.nbConc ? ` · ${h.nbConc} concurrent${h.nbConc > 1 ? 's' : ''}` : ''}${detail}`;
+}
+function CoucheCouverture({ res }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map.getPane('couverture')) {
+      const p = map.createPane('couverture');
+      p.style.zIndex = 350;
+      p.style.pointerEvents = 'none';
+    }
+    const S = sommetsHex(res.taille);
+    const couleurs = res.hex.map((h) => couleurHex(res, h));
+    const cos = res.hex.map((h) => Math.cos((h.lat * Math.PI) / 180));
+    const projections = new Map();
+    const projeter = (z) => {
+      if (!projections.has(z)) {
+        const a = new Float64Array(res.hex.length * 2);
+        res.hex.forEach((h, i) => { const p = map.project([h.lat, h.lng], z); a[2 * i] = p.x; a[2 * i + 1] = p.y; });
+        projections.set(z, a);
+      }
+      return projections.get(z);
+    };
+    const Couche = L.GridLayer.extend({
+      createTile(coords) {
+        const tile = L.DomUtil.create('canvas', 'leaflet-tile');
+        const taille = this.getTileSize();
+        tile.width = taille.x;
+        tile.height = taille.y;
+        const ctx = tile.getContext('2d');
+        const a = projeter(coords.z);
+        const x0 = coords.x * taille.x;
+        const y0 = coords.y * taille.y;
+        const parDegre = (256 * 2 ** coords.z) / 360;
+        const off = S.map(([dLat, dLng]) => [dLng * parDegre, dLat * parDegre]);
+        const rayon = Math.abs(off[0][0]) / Math.cos(Math.PI / 6);
+        const marge = rayon * 1.6 + 2;
+        const petit = rayon < 2.2;
+        if (rayon > 7) { ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = 1; }
+        for (let i = 0; i < res.hex.length; i++) {
+          const c = couleurs[i];
+          if (!c) continue;
+          const x = a[2 * i] - x0;
+          const y = a[2 * i + 1] - y0;
+          if (x < -marge || y < -marge || x > taille.x + marge || y > taille.y + marge) continue;
+          ctx.fillStyle = c;
+          if (petit) { const r = Math.max(1.4, rayon * 1.15); ctx.fillRect(x - r, y - r, 2 * r, 2 * r); continue; }
+          ctx.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const px = x + off[k][0];
+            const py = y - off[k][1] / cos[i];
+            if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fill();
+          if (rayon > 7) ctx.stroke();
+        }
+        return tile;
+      },
+    });
+    const couche = new Couche({ pane: 'couverture', opacity: 0.55, updateWhenZooming: false, keepBuffer: 2 });
+    couche.addTo(map);
+    // Info-bulle au survol : l'hexagone sous la souris.
+    const bulle = L.tooltip({ direction: 'top', offset: [0, -12], opacity: 0.97 });
+    let attente = null;
+    let dernier = null;
+    const survol = (e) => {
+      dernier = e.latlng;
+      if (attente) return;
+      attente = requestAnimationFrame(() => {
+        attente = null;
+        const i = hexEn(res, dernier.lat, dernier.lng);
+        if (i < 0 || !couleurs[i]) { map.closeTooltip(bulle); return; }
+        bulle.setLatLng(dernier).setContent(infoHex(res, res.hex[i]));
+        if (!map.hasLayer(bulle)) map.openTooltip(bulle);
+      });
+    };
+    const sortie = () => map.closeTooltip(bulle);
+    map.on('mousemove', survol);
+    map.on('mouseout', sortie);
+    return () => {
+      map.off('mousemove', survol);
+      map.off('mouseout', sortie);
+      if (attente) cancelAnimationFrame(attente);
+      map.closeTooltip(bulle);
+      map.removeLayer(couche);
+    };
+  }, [map, res]);
+  return null;
+}
+
+// Contour de l'hexagone choisi.
+function HexChoisi({ res, i }) {
+  const h = res.hex[i];
+  const positions = sommetsHex(res.taille).map(([dLat, dLng]) => [h.lat + dLat, h.lng + dLng]);
+  return <Polygon positions={positions} interactive={false} pathOptions={{ color: '#1e1b4b', weight: 2.5, fill: false }} />;
+}
+
 function LocationSelector({ onSelect }) {
   useMapEvents({
     click(e) {
@@ -152,6 +262,8 @@ export default function ProMap({
   delegations = null,    // contours et chiffres des délégations (lib/recensement.js) : carte de densité
   carteDelegations = 'densite', // 'densite' (habitants / km²) ou 'pauvrete' (taux de pauvreté)
   isochrone = null,      // zones accessibles autour de l'emplacement simulé : { url, bounds } (lib/isochrones.js)
+  couverture = null,     // carte de couverture en hexagones (lib/couverture.js)
+  hexChoisi = -1,        // indice de l'hexagone choisi dans la carte de couverture
 }) {
   const [geoData, setGeoData] = useState(null);
 
@@ -197,10 +309,20 @@ export default function ProMap({
   useEffect(() => {
     if (geoRef.current) geoRef.current.setStyle(geoStyle);
   }, [geoStyle]);
+  // Carte de couverture : l'info-bulle de l'hexagone remplace celle du gouvernorat.
+  const avecCouverture = !!couverture;
+  useEffect(() => {
+    if (!geoRef.current) return;
+    geoRef.current.eachLayer((l) => {
+      if (avecCouverture) l.unbindTooltip();
+      else if (!l.getTooltip()) l.bindTooltip(l.feature.nomGouv, { sticky: true, direction: 'top', offset: [0, -8] });
+    });
+  }, [avecCouverture, geoData]);
 
   const onEachGouv = useCallback((feature, layer) => {
     const name = getGouvName(feature);
     layer.bindTooltip(name, { sticky: true, direction: 'top', offset: [0, -8] });
+    layer.feature.nomGouv = name;
     layer.on({
       mouseover: () => layer.setStyle({ fillOpacity: 0.12, weight: 2, opacity: 0.9 }),
       mouseout: () => layer.setStyle(styleRef.current(feature)),
@@ -381,6 +503,9 @@ export default function ProMap({
             />
           </Pane>
         )}
+
+        {couverture && <CoucheCouverture res={couverture} />}
+        {couverture && hexChoisi >= 0 && hexChoisi < couverture.hex.length && <HexChoisi res={couverture} i={hexChoisi} />}
 
         {generateurs && classesGenerateurs.length > 0 && (
           <CoucheGenerateurs generateurs={generateurs} actives={classesGenerateurs} compact={compact} />
