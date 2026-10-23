@@ -16,6 +16,7 @@ import VentesImport from '../../components/VentesImport';
 import SimulationPanel from '../../components/SimulationPanel';
 import DemographiePanel from '../../components/DemographiePanel';
 import { surfacesGouvernorats } from '../../lib/simulation';
+import { chargerDelegations, fusionnerDemographie } from '../../lib/recensement';
 import { CLASSES_PAR_DEFAUT, COULEURS_GENERATEURS, chargerGenerateurs } from '../../lib/generateurs';
 import { GOUV_COORDS } from '../../lib/gouvernorats';
 import { C, Message, surtitre } from '../../components/ui';
@@ -50,7 +51,10 @@ export default function ProPage() {
     if (membership && !generateurs) chargerGenerateurs().then(setGenerateurs).catch(() => {});
   }, [membership, generateurs]);
   const [info, setInfo] = useState(null);
-  const [demographie, setDemographie] = useState([]);
+  const [demographieTable, setDemographie] = useState([]);
+  // Recensement 2024 par délégation (contours + chiffres), complété du revenu saisi dans la table.
+  const [delegations, setDelegations] = useState(null);
+  const demographie = useMemo(() => fusionnerDemographie(delegations, demographieTable), [delegations, demographieTable]);
   const [rayonKm, setRayonKm] = useState(1);
   const [gouvDemo, setGouvDemo] = useState('Tous');
   const requete = useRef(0);
@@ -94,6 +98,7 @@ export default function ProPage() {
   useEffect(() => {
     if (!userId) return;
     supabase.from('decoupage_administratif').select('*').then(({ data }) => setDemographie(data || []));
+    chargerDelegations().then(setDelegations).catch(() => {});
   }, [userId]);
 
   const choisirGouvDemo = (g) => {
@@ -527,6 +532,7 @@ export default function ProPage() {
           generateurs={generateurs}
           classesGenerateurs={classesGen}
           selectedGouv={tab === 'demographie' ? gouvDemo : null}
+          delegations={tab === 'demographie' ? delegations : null}
           zoneKm={tab === 'simuler' && position ? rayonKm : null}
         />
       </section>

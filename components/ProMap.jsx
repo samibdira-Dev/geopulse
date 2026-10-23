@@ -1,5 +1,5 @@
 'use client';
-import { MapContainer, TileLayer, Marker, CircleMarker, Popup, GeoJSON, Circle, ZoomControl, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, CircleMarker, Popup, GeoJSON, Circle, ZoomControl, Pane, useMapEvents, useMap } from 'react-leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -7,6 +7,7 @@ import { normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
 
 import { STATUTS, isManagerRole, valeurChamp } from '../lib/points';
 import { caMensuelMoyen, evolution } from '../lib/ventes';
+import { couleurDensite } from '../lib/recensement';
 import { COULEURS_GENERATEURS, indiceNational, niveauPassage, scorePassage } from '../lib/generateurs';
 
 // Pastille colorée selon le type du point ; l'anneau indique le statut de validation.
@@ -145,6 +146,7 @@ export default function ProMap({
   compact = false,       // téléphone : points plus petits, pas de boutons de zoom
   generateurs = null,    // générateurs de trafic (lib/generateurs.js), affichés si des classes sont actives
   classesGenerateurs = [], // clés des classes de générateurs affichées
+  delegations = null,    // contours et chiffres des délégations (lib/recensement.js) : carte de densité
 }) {
   const [geoData, setGeoData] = useState(null);
 
@@ -331,6 +333,31 @@ export default function ProMap({
           />
         )}
       
+        {delegations && (
+          // Carte de densité des délégations (onglet Démographie), au-dessus des gouvernorats.
+          <Pane name="delegations" style={{ zIndex: 405 }}>
+            <GeoJSON
+              key={'del-' + (selectedGouv || 'Tous')}
+              data={delegations}
+              style={(f) => {
+                const p = f.properties;
+                const dansGouv = !selectedGouv || selectedGouv === 'Tous' || sameGouvernorat(p.gouvernorat, selectedGouv);
+                return { fillColor: couleurDensite(p.population / Math.max(0.1, p.surface_km2)), fillOpacity: dansGouv ? 0.55 : 0.12, color: '#ffffff', weight: dansGouv ? 1 : 0.4, opacity: dansGouv ? 0.9 : 0.3 };
+              }}
+              onEachFeature={(f, layer) => {
+                const p = f.properties;
+                const densite = Math.round(p.population / Math.max(0.1, p.surface_km2));
+                layer.bindTooltip(
+                  `<b>${p.delegation}</b> · ${p.gouvernorat}<br>${p.population.toLocaleString('fr-FR')} hab. · ${densite.toLocaleString('fr-FR')} hab./km²`
+                  + (p.source === 'rgph2024' ? '<br><span style="color:#059669">Recensement 2024</span>' : '<br><span style="color:#94a3b8">Estimation 2024</span>'),
+                  { sticky: true, direction: 'top', offset: [0, -8] }
+                );
+                layer.on('click', (e) => { L.DomEvent.stopPropagation(e); if (selectRef.current) selectRef.current(e.latlng); });
+              }}
+            />
+          </Pane>
+        )}
+
         {generateurs && classesGenerateurs.length > 0 && (
           <CoucheGenerateurs generateurs={generateurs} actives={classesGenerateurs} compact={compact} />
         )}
