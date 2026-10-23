@@ -63,6 +63,8 @@ export default function ProPage() {
   const demographie = useMemo(() => fusionnerDemographie(delegations, demographieTable), [delegations, demographieTable]);
   const [rayonKm, setRayonKm] = useState(1);
   const [zoneSim, setZoneSim] = useState({ type: 'cercle' }); // zone du simulateur : cercle ou temps de trajet
+  // Sites du comparateur, gardés dans ce navigateur pour chaque société.
+  const [sitesComp, setSitesComp] = useState([]);
   const [gouvDemo, setGouvDemo] = useState('Tous');
   const [carteDemo, setCarteDemo] = useState('densite');
   const requete = useRef(0);
@@ -183,6 +185,16 @@ export default function ProPage() {
   }, [membership]);
 
   useEffect(() => { charger(); }, [charger]);
+
+  const cleComparateur = membership ? 'gp-comparateur-' + membership.societe_id : null;
+  useEffect(() => {
+    if (!cleComparateur) return;
+    try { setSitesComp(JSON.parse(localStorage.getItem(cleComparateur) || '[]')); } catch (e) { setSitesComp([]); }
+  }, [cleComparateur]);
+  const changerSites = useCallback((liste) => {
+    setSitesComp(liste);
+    try { if (cleComparateur) localStorage.setItem(cleComparateur, JSON.stringify(liste)); } catch (e) { /* stockage indisponible */ }
+  }, [cleComparateur]);
 
   // Synthèse des visites : absente tant que le script visites.sql n'a pas été lancé (on l'ignore alors).
   async function chargerVisites() {
@@ -434,6 +446,11 @@ export default function ProPage() {
                 onRayon={setRayonKm}
                 zone={zoneSim}
                 onZone={setZoneSim}
+                sites={sitesComp}
+                onSites={changerSites}
+                societeNom={societe ? societe.nom : ''}
+                auteur={membership.nom_affiche || session.user.email}
+                onVoir={(x) => { setFeuille('ferme'); setView({ center: [x.lat, x.lng], zoom: 15 }); }}
                 points={points}
                 typesById={typesById}
                 champs={champs}

@@ -14,8 +14,11 @@ import { couleurPauvrete, delegationEn } from '../lib/recensement';
 import { COULEURS_GENERATEURS, SINGULIERS, chargerGenerateurs, niveauPassage, passageAutour } from '../lib/generateurs';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
 import Icon from './icons';
+import Comparateur from './Comparateur';
+import { MAX_SITES, instantane } from '../lib/comparateur';
 
 const RAYONS = [0.5, 1, 2, 3, 5];
+const ghostBtnLocal = { background: 'white', color: C.brandDark, border: '1px solid #c7d2fe', padding: '10px 14px', borderRadius: '10px', fontWeight: 600, fontSize: '13px', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' };
 const DUREES_ZONE = [5, 10, 15];
 // Zones comparées par le bouton « Quelle zone prédit le mieux vos ventes ? ».
 const ZONES_COMPAREES = [
@@ -74,7 +77,7 @@ function NoteBadge({ note, clair }) {
 }
 
 // Simulateur d'emplacement : population de la zone, cannibalisation, concurrence et CA estimé.
-export default function SimulationPanel({ position, rayonKm, onRayon, zone = { type: 'cercle' }, onZone = () => {}, points, typesById, champs, demographie, surfaces, ventes, onAjouter, onIsochrone, delegations = null }) {
+export default function SimulationPanel({ position, rayonKm, onRayon, zone = { type: 'cercle' }, onZone = () => {}, points, typesById, champs, demographie, surfaces, ventes, onAjouter, onIsochrone, delegations = null, sites = [], onSites = () => {}, societeNom = '', auteur = '', onVoir = () => {} }) {
   const typesPdv = useMemo(() => Object.values(typesById).filter((t) => ['point_de_vente', 'client'].includes(t.categorie)).map((t) => t.id), [typesById]);
   const champsDispo = useMemo(() => champsCA(champs, typesPdv), [champs, typesPdv]);
   const [cleCA, setCleCA] = useState('');
@@ -379,6 +382,11 @@ export default function SimulationPanel({ position, rayonKm, onRayon, zone = { t
           </select>
         </div>
       )}
+
+      <Comparateur sites={sites} societe={societeNom} auteur={auteur} onVoir={onVoir}
+        onRetirer={(id) => onSites(sites.filter((x) => x.id !== id))}
+        onRenommer={(id, nom) => onSites(sites.map((x) => (x.id === id ? { ...x, nom } : x)))}
+        onVider={() => { if (window.confirm('Retirer tous les sites du comparateur ?')) onSites([]); }} />
 
       {!position && (
         <Empty icon="crosshair">Aucun emplacement sélectionné.<br />Cliquez sur la carte pour lancer l’étude.</Empty>
@@ -856,6 +864,22 @@ export default function SimulationPanel({ position, rayonKm, onRayon, zone = { t
               )}
             </p>
           </details>
+
+          {(() => {
+            const deja = sites.some((x) => Math.abs(x.lat - position.lat) < 1e-6 && Math.abs(x.lng - position.lng) < 1e-6 && x.surface === (Number(surfaceSaisie) > 0 ? Number(surfaceSaisie) : res.surfaceNouveau));
+            const plein = sites.length >= MAX_SITES;
+            const ajouter = () => onSites([...sites, instantane({
+              position, zoneLibelle: trajet ? libelleZone(zone) : `Cercle de ${km(rayonKm)}`, res, caCentral: masque ? null : caCentral, plage, confiance, test, jum,
+              renta, marche, partCaptee, profilEtudie, passage, points, typesById, surface: Number(surfaceSaisie) > 0 ? Number(surfaceSaisie) : res.surfaceNouveau, loyer, investissement,
+            })]);
+            return (
+              <button type="button" onClick={ajouter} disabled={deja || plein || calibActif === undefined}
+                style={{ ...ghostBtnLocal, opacity: deja || plein ? 0.6 : 1, cursor: deja || plein ? 'default' : 'pointer' }}>
+                <Icon name="split" size={15} />
+                {deja ? 'Site déjà dans le comparateur' : plein ? `Comparateur plein (${MAX_SITES} sites) : retirez-en un` : `Ajouter ce site au comparateur${sites.length ? ` (${sites.length}/${MAX_SITES})` : ''}`}
+              </button>
+            );
+          })()}
 
           <button type="button" onClick={onAjouter} style={btn()}>
             <Icon name="plus" size={16} /> Enregistrer un point à cet emplacement
