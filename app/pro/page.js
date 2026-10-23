@@ -5,7 +5,7 @@ import { supabase, supabaseConfigured } from '../../lib/supabase';
 import { chargerTout, isManagerRole, ROLES, traduireErreur } from '../../lib/points';
 import { adresseAt, dansTunisie, gouvernoratAt } from '../../lib/geo';
 import LoginScreen from '../../components/LoginScreen';
-import SocieteSetup from '../../components/SocieteSetup';
+import SocieteSetup, { SocieteEnAttente } from '../../components/SocieteSetup';
 import PointForm from '../../components/PointForm';
 import PointsList from '../../components/PointsList';
 import ValidationPanel from '../../components/ValidationPanel';
@@ -97,10 +97,10 @@ export default function ProPage() {
   // Société de l'utilisateur
   const chargerMembership = useCallback(async () => {
     if (!userId) { setMembership(null); return; }
-    const { data, error } = await supabase
-      .from('membres')
-      .select('societe_id, role, nom_affiche, societes(id, nom, secteur)')
-      .eq('user_id', userId);
+    const lire = (colonnes) => supabase.from('membres').select('societe_id, role, nom_affiche, societes(' + colonnes + ')').eq('user_id', userId);
+    let { data, error } = await lire('id, nom, secteur, statut');
+    // Base sans le script plateforme.sql : pas encore de statut, toutes les sociétés sont ouvertes.
+    if (error && /statut/.test(error.message || '')) ({ data, error } = await lire('id, nom, secteur'));
     if (error) { setInfo({ type: 'err', text: traduireErreur(error) }); setMembership(null); return; }
     if (!data || !data.length) { setMemberships([]); setMembership(null); setSociete(null); return; }
     let saved = null;
@@ -123,6 +123,13 @@ export default function ProPage() {
     setPosition(null); setEditing(null); setFiltreTypes([]); setTab('nouveau');
     try { window.localStorage.setItem('geopulse_societe', id); } catch (e) { /* ignoré */ }
   };
+
+  // Administrateur de la plateforme GeoPulse : accès à la console.
+  const [plateformeAdmin, setPlateformeAdmin] = useState(false);
+  useEffect(() => {
+    if (!userId) { setPlateformeAdmin(false); return; }
+    supabase.rpc('est_plateforme_admin').then(({ data }) => setPlateformeAdmin(data === true));
+  }, [userId]);
 
   useEffect(() => {
     if (session === undefined) return;
@@ -276,6 +283,12 @@ export default function ProPage() {
   if (!membership) {
     return <SocieteSetup email={session.user.email} onCreated={chargerMembership} onSignOut={deconnexion} />;
   }
+  if (societe && societe.statut && societe.statut !== 'active') {
+    return (
+      <SocieteEnAttente societe={societe} email={session.user.email} memberships={memberships} onChoisir={changerSociete}
+        onRecharger={chargerMembership} onSignOut={deconnexion} />
+    );
+  }
 
   const onglets = [
     ['nouveau', editing ? 'edit' : 'plus', editing ? 'Modifier' : 'Nouveau'],
@@ -310,6 +323,11 @@ export default function ProPage() {
           </nav>
           <div className="gp-rail-bas" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
             <div title={email} style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg,#334155,#1e293b)', color: '#e2e8f0', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,.12)' }}>{initiales}</div>
+            {plateformeAdmin && (
+              <a href="/console" title="Console GeoPulse" className="gp-rail-item" style={{ borderRadius: '10px', padding: '8px', display: 'flex' }}>
+                <Icon name="shield" size={18} />
+              </a>
+            )}
             <button type="button" onClick={deconnexion} title="Se déconnecter" className="gp-rail-item" style={{ border: 'none', background: 'none', borderRadius: '10px', padding: '8px', cursor: 'pointer' }}>
               <Icon name="logout" size={18} />
             </button>
@@ -346,6 +364,11 @@ export default function ProPage() {
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{email}</span>
               </div>
             </div>
+            {plateformeAdmin && (
+              <a href="/console" title="Console GeoPulse" className="gp-mobile-seul" style={{ border: '1px solid ' + C.line, background: 'white', borderRadius: '10px', padding: '8px', color: C.brand, flex: 'none' }}>
+                <Icon name="shield" size={17} />
+              </a>
+            )}
             <button type="button" onClick={deconnexion} title="Se déconnecter" className="gp-mobile-seul" style={{ border: '1px solid ' + C.line, background: 'white', borderRadius: '10px', padding: '8px', cursor: 'pointer', color: C.muted, flex: 'none' }}>
               <Icon name="logout" size={17} />
             </button>
