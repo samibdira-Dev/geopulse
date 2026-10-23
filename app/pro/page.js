@@ -10,6 +10,7 @@ import PointForm from '../../components/PointForm';
 import PointsList from '../../components/PointsList';
 import ValidationPanel from '../../components/ValidationPanel';
 import JournalPanel from '../../components/JournalPanel';
+import VisitesPanel from '../../components/VisitesPanel';
 import TeamPanel from '../../components/TeamPanel';
 import TypesAdmin from '../../components/TypesAdmin';
 import VentesImport from '../../components/VentesImport';
@@ -43,6 +44,9 @@ export default function ProPage() {
   const [view, setView] = useState(null);
   const [geo, setGeo] = useState(null);
   const [ventes, setVentes] = useState({}); // id du point -> synthèse des ventes (ventes_resume)
+  const [visites, setVisites] = useState({}); // id du point -> dernière visite et activité 90 jours (visites_resume)
+  const [visiteDe, setVisiteDe] = useState(null); // point choisi sur la carte pour noter une visite
+  const [filtreVisites, setFiltreVisites] = useState(null); // ids des points à visiter montrés seuls sur la carte
   const [filtreTypes, setFiltreTypes] = useState([]); // types affichés sur la carte ; vide = tous
   const [isochrone, setIsochrone] = useState(null); // zones à 5, 10, 15 min autour de l'emplacement simulé (image)
   const [classesGen, setClassesGen] = useState([]); // classes de générateurs de trafic affichées ; vide = couche masquée
@@ -173,9 +177,18 @@ export default function ProPage() {
     const v = await chargerTout(() => supabase.rpc('ventes_resume', { p_societe: sid }).order('point_id'));
     if (num !== requete.current) return;
     setVentes(Object.fromEntries((v.data || []).map((r) => [r.point_id, r])));
+    chargerVisites();
   }, [membership]);
 
   useEffect(() => { charger(); }, [charger]);
+
+  // Synthèse des visites : absente tant que le script visites.sql n'a pas été lancé (on l'ignore alors).
+  async function chargerVisites() {
+    if (!membership) return;
+    const r = await chargerTout(() => supabase.rpc('visites_resume', { p_societe: membership.societe_id }).order('point_id'));
+    setVisites(Object.fromEntries((r.data || []).map((x) => [x.point_id, x])));
+  }
+  const noterVisite = useCallback((p) => { setVisiteDe(p); setTab('visites'); ouvrirFeuille(); }, []);
 
   const typesActifs = useMemo(() => types.filter((t) => t.actif), [types]);
   const typesById = useMemo(() => Object.fromEntries(types.map((t) => [t.id, t])), [types]);
@@ -188,10 +201,14 @@ export default function ProPage() {
     () => Object.fromEntries(membres.map((m) => [m.user_id, m.nom_affiche || 'Membre ' + m.user_id.slice(0, 6)])),
     [membres]
   );
-  const pointsVisibles = useMemo(
-    () => (filtreTypes.length ? points.filter((p) => filtreTypes.includes(p.type_id)) : points),
-    [points, filtreTypes]
-  );
+  const pointsVisibles = useMemo(() => {
+    let out = filtreTypes.length ? points.filter((p) => filtreTypes.includes(p.type_id)) : points;
+    if (tab === 'visites' && filtreVisites) {
+      const ids = new Set(filtreVisites);
+      out = out.filter((p) => ids.has(p.id));
+    }
+    return out;
+  }, [points, filtreTypes, tab, filtreVisites]);
   const aValiderCount = points.filter((p) => p.statut === 'a_valider').length;
   const compteParType = useMemo(() => {
     const out = {};
@@ -308,6 +325,7 @@ export default function ProPage() {
     ['nouveau', editing ? 'edit' : 'plus', editing ? 'Modifier' : 'Nouveau'],
     ['simuler', 'target', 'Simuler'],
     ['points', 'list', 'Points'],
+    ['visites', 'calendar', 'Visites'],
     ['demographie', 'users', 'Démo\u00ADgraphie'],
     ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'chart', 'Import']] : []),
     ...(role === 'admin' ? [['types', 'tag', 'Types'], ['equipe', 'team', 'Équipe']] : []),
@@ -424,6 +442,11 @@ export default function ProPage() {
               />
             )}
 
+            {tab === 'visites' && (
+              <VisitesPanel societeId={membership.societe_id} points={points} typesById={typesById} auteurs={auteurs} userId={userId} role={role}
+                resume={visites} pointChoisi={visiteDe} onPointChoisi={setVisiteDe} onChanged={chargerVisites} onFocus={focaliser} onCarte={setFiltreVisites} />
+            )}
+
             {tab === 'demographie' && (
               <DemographiePanel demographie={demographie} gouvernorat={gouvDemo} onGouvernorat={choisirGouvDemo} carte={carteDemo} onCarte={setCarteDemo} />
             )}
@@ -527,6 +550,8 @@ export default function ProPage() {
           currentUserId={userId}
           role={role}
           onEditPoint={modifier}
+          visites={visites}
+          onVisite={noterVisite}
           onSelectLocation={surClic}
           simulatedPoint={position}
           onDragSimulated={(ll) => poser(ll.lat, ll.lng, 'pin_manuel')}

@@ -1,5 +1,6 @@
 'use client';
 import { MapContainer, TileLayer, Marker, CircleMarker, Popup, GeoJSON, Circle, ImageOverlay, ZoomControl, Pane, useMapEvents, useMap } from 'react-leaflet';
+import { depuisLe } from '../lib/visites';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -136,6 +137,8 @@ export default function ProMap({
   currentUserId = null,
   role = 'commercial',
   onEditPoint,
+  visites = {},
+  onVisite,
   onSelectLocation,
   simulatedPoint,
   onDragSimulated,
@@ -283,11 +286,27 @@ export default function ProMap({
                 })}
               </div>
             )}
+            {visites[p.id] && (
+              <div style={{ fontSize: '12px', marginTop: '8px', color: '#64748b' }}>
+                Dernière visite <b style={{ color: '#0f172a', fontWeight: 600 }}>{depuisLe(visites[p.id].derniere_visite)}</b>
+                {visites[p.id].derniere_commande ? ` · commande ${depuisLe(visites[p.id].derniere_commande)}` : ''}
+              </div>
+            )}
             {p.statut === 'rejete' && p.commentaire_validation && (
               <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '8px' }}>Motif du rejet : {p.commentaire_validation}</div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #eef0f4' }}>
               <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ajouté par {p.cree_par === currentUserId ? 'moi' : (auteurs[p.cree_par] || 'un membre')}</span>
+              <span style={{ display: 'flex', gap: '6px' }}>
+              {onVisite && (typesById[p.type_id] || {}).categorie !== 'concurrent' && (
+                <button
+                  type="button"
+                  onClick={() => onVisite(p)}
+                  style={{ background: '#dcfce7', color: '#15803d', border: 'none', borderRadius: '8px', padding: '5px 10px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Visite
+                </button>
+              )}
               {editable && onEditPoint && (
                 <button
                   type="button"
@@ -297,12 +316,13 @@ export default function ProMap({
                   Modifier
                 </button>
               )}
+              </span>
             </div>
           </div>
         </Popup>
       </CircleMarker>
     );
-  }), [ordonnes, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes, compact, generateurs]);
+  }), [ordonnes, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes, compact, generateurs, visites, onVisite]);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
