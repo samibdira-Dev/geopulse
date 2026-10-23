@@ -441,7 +441,7 @@ export default function ProPage() {
             )}
 
             {tab === 'types' && role === 'admin' && (
-              <TypesAdmin societeId={membership.societe_id} types={types} champs={champs} onChanged={charger} />
+              <TypesAdmin societeId={membership.societe_id} types={types} champs={champs} points={points} onChanged={charger} />
             )}
 
             {tab === 'journal' && manager && (

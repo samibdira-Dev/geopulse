@@ -5,6 +5,7 @@ import { champsDuType, traduireErreur } from '../lib/points';
 import { PARAMS_EXPLOITATION } from '../lib/rentabilite';
 import { SECTEURS } from '../lib/marche';
 import { btn, ghostBtn, inputStyle, labelStyle, Message, SectionTitle } from './ui';
+import GrandesSurfaces from './GrandesSurfaces';
 
 const CATEGORIES = {
   client: 'Client',
@@ -73,7 +74,7 @@ function ExploitationForm({ type, busy, onSave }) {
 }
 
 // Réservé aux administrateurs : types de points et champs personnalisés de la société.
-export default function TypesAdmin({ societeId, types, champs, onChanged }) {
+export default function TypesAdmin({ societeId, types, champs, points = [], onChanged }) {
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [nouveau, setNouveau] = useState({ nom: '', categorie: 'client', couleur: '#3b82f6' });
@@ -149,6 +150,8 @@ export default function TypesAdmin({ societeId, types, champs, onChanged }) {
       </SectionTitle>
 
       {message && <Message type={message.type}>{message.text}</Message>}
+
+      <GrandesSurfaces societeId={societeId} types={types} points={points} onChanged={onChanged} />
 
       {types.map((t) => {
         const cs = champsDuType(champs, t.id);
