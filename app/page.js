@@ -149,7 +149,10 @@ export default function Accueil() {
       </section>
 
       <footer className="acc-pied">
-        <span className="acc-marque"><Logo size={26} /><span>GeoPulse</span></span>
+        <div className="acc-signature">
+          <span className="acc-marque"><Logo size={26} /><span>GeoPulse</span></span>
+          <span className="acc-auteur">by Sami BDIRA</span>
+        </div>
         <span>Géomarketing de précision pour la Tunisie · © {new Date().getFullYear()}</span>
       </footer>
 

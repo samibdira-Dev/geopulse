@@ -11,6 +11,8 @@
 }
 .acc-marque { display: inline-flex; align-items: center; gap: 10px; color: white; font-weight: 800; font-size: 18px; letter-spacing: -.02em; }
 .acc-pied .acc-marque { color: #0f172a; font-size: 15px; }
+.acc-signature { display: flex; flex-direction: column; gap: 3px; }
+.acc-auteur { padding-left: 36px; font-size: 11.5px; color: #94a3b8; letter-spacing: .02em; }
 .acc-liens { display: flex; gap: 22px; margin-left: auto; }
 .acc-liens a { color: #c7d2fe; font-size: 14px; font-weight: 500; }
 .acc-liens a:hover { color: white; }
