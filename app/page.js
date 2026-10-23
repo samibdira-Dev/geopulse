@@ -4,7 +4,7 @@ import './accueil.css';
 import Icon, { Logo } from '../components/icons';
 import { APPAREILS, IconeEtape, etapes, useInstallation } from '../components/Installer';
 
-// Page d'accueil publique : présente GeoPulse et propose de l'installer sur l'appareil du visiteur.
+// Page d'accueil publique : site vitrine qui présente GeoPulse, avec une icône pour l'installer sur l'appareil du visiteur.
 
 const ETAPES = [
   ['upload', 'Importez votre réseau', 'Vos magasins, clients et concurrents depuis Excel ou votre ERP, avec leurs ventes mois par mois. Chaque point garde son code ERP.'],
@@ -28,20 +28,16 @@ const SECTEURS = ['Agroalimentaire', 'Volaille', 'Produits laitiers', 'Distribut
 export default function Accueil() {
   const inst = useInstallation();
   const [fenetre, setFenetre] = useState(false);
-  const [onglet, setOnglet] = useState('iphone');
   const [connecte, setConnecte] = useState(false);
 
   useEffect(() => {
     // Déjà connecté sur cet appareil : on propose d'ouvrir directement son espace.
     try { setConnecte(Object.keys(window.localStorage).some((k) => /^sb-.*-auth-token$/.test(k))); } catch (e) { /* stockage indisponible */ }
   }, []);
-  useEffect(() => { if (inst.pret) setOnglet(inst.appareil); }, [inst.pret, inst.appareil]);
 
-  const libelle = inst.installee ? 'Ouvrir l’application' : APPAREILS[inst.appareil].bouton;
-  const cliquerInstaller = async () => {
-    if (inst.installee) { window.location.href = '/pro'; return; }
+  const libelle = APPAREILS[inst.appareil].bouton;
+  const installer = async () => {
     if (inst.direct && await inst.installer()) return;
-    setOnglet(inst.appareil);
     setFenetre(true);
   };
 
@@ -53,8 +49,12 @@ export default function Accueil() {
           <a href="#fonctionnement">Fonctionnement</a>
           <a href="#fonctions">Fonctions</a>
           <a href="#secteurs">Secteurs</a>
-          <a href="#installer">Installer</a>
         </nav>
+        {inst.pret && !inst.installee && (
+          <button type="button" onClick={installer} className="acc-icone-installer" title={libelle} aria-label={libelle}>
+            <img src="/icons/icon-192.png" alt="" /><span>Installer</span>
+          </button>
+        )}
         <a href="/pro" className="acc-btn acc-btn-clair acc-petit">{connecte ? 'Ouvrir mon espace' : 'Se connecter'}</a>
       </header>
 
@@ -67,9 +67,7 @@ export default function Accueil() {
             chiffre d’affaires d’un nouvel emplacement avant que vous n’investissiez.
           </p>
           <div className="acc-actions">
-            <button type="button" onClick={cliquerInstaller} className="acc-btn acc-btn-principal">
-              <IconeEtape nom={inst.installee ? 'ok' : 'ajout'} size={18} /> {libelle}
-            </button>
+            <a href="/pro#inscription" className="acc-btn acc-btn-principal">Demander l’ouverture</a>
             <a href="/pro" className="acc-btn acc-btn-fantome">{connecte ? 'Ouvrir mon espace' : 'Se connecter'}</a>
           </div>
           <div className="acc-chiffres">
@@ -141,27 +139,6 @@ export default function Accueil() {
         </div>
       </section>
 
-      <section id="installer" className="acc-section acc-installer">
-        <div className="acc-titre">
-          <span className="acc-surtitre">Application</span>
-          <h2>Installez GeoPulse sur tous vos appareils</h2>
-          <p className="acc-sous">Une icône sur votre écran d’accueil, l’application en plein écran, et toujours la dernière version. Sans passer par un magasin d’applications.</p>
-        </div>
-        <div className="acc-onglets">
-          {Object.entries(APPAREILS).map(([k, a]) => (
-            <button key={k} type="button" onClick={() => setOnglet(k)} className={onglet === k ? 'actif' : ''}>
-              {a.nom}{inst.pret && inst.appareil === k ? ' · le vôtre' : ''}
-            </button>
-          ))}
-        </div>
-        <Etapes appareil={onglet} navigateur={onglet === inst.appareil ? inst.navigateur : onglet === 'iphone' || onglet === 'ipad' || onglet === 'mac' ? 'safari' : 'chrome'} />
-        {onglet === inst.appareil && (
-          <button type="button" onClick={cliquerInstaller} className="acc-btn acc-btn-principal acc-centre">
-            <IconeEtape nom={inst.installee ? 'ok' : 'ajout'} size={18} /> {libelle}
-          </button>
-        )}
-      </section>
-
       <section className="acc-fin">
         <h2>Prêt à voir votre réseau autrement ?</h2>
         <p>Créez votre compte et demandez l’ouverture de votre société : l’équipe GeoPulse vous accompagne pour importer vos données.</p>
@@ -176,8 +153,8 @@ export default function Accueil() {
         <span>Géomarketing de précision pour la Tunisie · © {new Date().getFullYear()}</span>
       </footer>
 
-      {!inst.installee && (
-        <button type="button" onClick={cliquerInstaller} className="acc-flottant" aria-label={libelle}>
+      {inst.pret && !inst.installee && (
+        <button type="button" onClick={installer} className="acc-flottant" aria-label={libelle}>
           <img src="/icons/icon-192.png" alt="" /> <span>{libelle}</span>
         </button>
       )}
@@ -193,23 +170,17 @@ export default function Accueil() {
               </div>
               <button type="button" onClick={() => setFenetre(false)} aria-label="Fermer">×</button>
             </div>
-            <Etapes appareil={inst.appareil} navigateur={inst.navigateur} compact />
+            <ol className="acc-liste-etapes">
+              {etapes(inst.appareil, inst.navigateur).map(([icone, titre, texte], i) => (
+                <li key={i}>
+                  <span className="acc-etape-icone"><IconeEtape nom={icone} size={20} /></span>
+                  <div><b>{i + 1}. {titre}</b><span>{texte}</span></div>
+                </li>
+              ))}
+            </ol>
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-function Etapes({ appareil, navigateur, compact }) {
-  return (
-    <ol className={'acc-liste-etapes' + (compact ? ' compact' : '')}>
-      {etapes(appareil, navigateur).map(([icone, titre, texte], i) => (
-        <li key={i}>
-          <span className="acc-etape-icone"><IconeEtape nom={icone} size={compact ? 20 : 22} /></span>
-          <div><b>{i + 1}. {titre}</b><span>{texte}</span></div>
-        </li>
-      ))}
-    </ol>
   );
 }
