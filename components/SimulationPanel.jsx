@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { champsCA, simuler } from '../lib/simulation';
 import { chargerGrille } from '../lib/population';
 import { preparerMoteur } from '../lib/huff';
-import { calibrerModele, combinerTests, ecartMethodes, fourchette, noteConfiance, testerModele } from '../lib/fiabilite';
+import { calibrerModele, combinerTests, ecartMethodes, fourchette, noteConfiance, testerAvecMoteur, testerModele } from '../lib/fiabilite';
+import { estimerTrajet, preparerMoteurTrajet } from '../lib/huffTrajet';
 import { calculerRentabilite, parametresDuType } from '../lib/rentabilite';
 import { depenseDuType, potentielMarche, reperesReseau } from '../lib/marche';
 import { NB_JUMEAUX, estimerParJumeaux, preparerReseau, profilSite, testerJumeaux } from '../lib/jumeaux';
@@ -15,6 +16,15 @@ import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, su
 import Icon from './icons';
 
 const RAYONS = [0.5, 1, 2, 3, 5];
+const DUREES_ZONE = [5, 10, 15];
+// Zones comparées par le bouton « Quelle zone prédit le mieux vos ventes ? ».
+const ZONES_COMPAREES = [
+  { type: 'cercle', rayonKm: 0.5 }, { type: 'cercle', rayonKm: 1 }, { type: 'cercle', rayonKm: 2 },
+  { type: 'trajet', mode: 'pied', maxMin: 5 }, { type: 'trajet', mode: 'pied', maxMin: 10 }, { type: 'trajet', mode: 'pied', maxMin: 15 },
+  { type: 'trajet', mode: 'voiture', maxMin: 5 }, { type: 'trajet', mode: 'voiture', maxMin: 10 },
+];
+const cleZone = (z) => (z.type === 'cercle' ? `c${z.rayonKm}` : `${z.mode}${z.maxMin}`);
+const libelleZone = (z) => (z.type === 'cercle' ? `Cercle de ${km(z.rayonKm)}` : `${z.maxMin} min ${z.mode === 'pied' ? 'à pied' : 'en voiture'}`);
 const fmtReglage = (v) => v.toLocaleString('fr-FR');
 const fmt = (n) => (n == null ? '—' : Math.round(n).toLocaleString('fr-FR'));
 const km = (d) => (d < 1 ? `${Math.round(d * 1000)} m` : `${(Math.round(d * 10) / 10).toLocaleString('fr-FR')} km`);
@@ -32,6 +42,25 @@ function Carte({ icon, titre, valeur, detail, couleur = C.text, children }) {
 
 // Réglages déjà calculés : points de la société (objet) -> rayon et champ CA -> { ventes, resultat }.
 const CALIBRAGES = new WeakMap();
+// Réseaux préparés sur les temps de trajet et leur réglage : points (objet) -> zone et champ CA -> { ventes, moteur, calib }.
+const TRAJETS = new WeakMap();
+
+// Prépare (ou reprend en mémoire) le réseau d'une zone en temps de trajet et règle le modèle sur les ventes.
+async function zoneTrajet(params, zone, annule, progression = () => {}) {
+  const parZone = TRAJETS.get(params.points) || new Map();
+  TRAJETS.set(params.points, parZone);
+  const cle = `${cleZone(zone)}|${params.cleCA}`;
+  const connu = parZone.get(cle);
+  if (connu && connu.ventes === params.ventes) return connu;
+  const moteur = await preparerMoteurTrajet({ ...params, mode: zone.mode, maxMin: zone.maxMin }, progression, annule);
+  if (!moteur || annule()) return null;
+  const r = await calibrerModele({ moteur }, annule);
+  if (annule()) return null;
+  const calib = r || { reglage: REGLAGE_DEFAUT, test: testerAvecMoteur(moteur, REGLAGE_DEFAUT), testDefaut: null };
+  const out = { ventes: params.ventes, moteur, calib };
+  parZone.set(cle, out);
+  return out;
+}
 
 const NOTES = { A: '#059669', B: '#0d9488', C: '#d97706', D: '#dc2626' };
 function NoteBadge({ note, clair }) {
@@ -45,7 +74,7 @@ function NoteBadge({ note, clair }) {
 }
 
 // Simulateur d'emplacement : population de la zone, cannibalisation, concurrence et CA estimé.
-export default function SimulationPanel({ position, rayonKm, onRayon, points, typesById, champs, demographie, surfaces, ventes, onAjouter, onIsochrone, delegations = null }) {
+export default function SimulationPanel({ position, rayonKm, onRayon, zone = { type: 'cercle' }, onZone = () => {}, points, typesById, champs, demographie, surfaces, ventes, onAjouter, onIsochrone, delegations = null }) {
   const typesPdv = useMemo(() => Object.values(typesById).filter((t) => ['point_de_vente', 'client'].includes(t.categorie)).map((t) => t.id), [typesById]);
   const champsDispo = useMemo(() => champsCA(champs, typesPdv), [champs, typesPdv]);
   const [cleCA, setCleCA] = useState('');
@@ -114,18 +143,73 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     return () => { annule = true; };
   }, [rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, moteur]);
 
+  // Zone en temps de trajet (à pied ou en voiture) : réseau préparé sur les isochrones de chaque point, en tâche de fond.
+  const trajet = zone.type === 'trajet';
+  const [zt, setZt] = useState(null); // { zone, moteur, calib } de la zone en cours
+  const [avancement, setAvancement] = useState(null);
+  useEffect(() => {
+    if (!trajet || !grille || !vitesses) { setZt(null); return undefined; }
+    let annule = false;
+    setZt(null);
+    setAvancement(0);
+    zoneTrajet({ vitesses, grille, points, typesById, champs, ventes, cleCA }, zone, () => annule, (x) => { if (!annule) setAvancement(x); })
+      .then((r) => { if (!annule) { setZt(r ? { zone, ...r } : null); setAvancement(null); } });
+    return () => { annule = true; };
+  }, [trajet, zone.mode, zone.maxMin, grille, vitesses, points, typesById, champs, ventes, cleCA]); // eslint-disable-line react-hooks/exhaustive-deps
+  // La carte montre les zones du même mode de déplacement.
+  useEffect(() => { if (trajet) setModeTrajet(zone.mode); }, [trajet, zone.mode]);
+  const calibActif = trajet ? (zt ? zt.calib : undefined) : calib;
+
+  // Comparaison des zones : test « un magasin caché » pour chaque zone, la plus précise en tête.
+  const [comparaison, setComparaison] = useState(null); // { resultats: [{ zone, erreur, n }], fini, en cours }
+  const comparer = async () => {
+    if (!grille) return;
+    const resultats = [];
+    setComparaison({ resultats, fini: false, encours: ZONES_COMPAREES[0] });
+    for (const z of ZONES_COMPAREES) {
+      setComparaison({ resultats: [...resultats], fini: false, encours: z });
+      let t = null;
+      if (z.type === 'cercle') {
+        const m = preparerMoteur({ rayonKm: z.rayonKm, points, typesById, champs, grille, ventes, cleCA });
+        const r = await calibrerModele({ moteur: m });
+        t = r ? r.test : testerAvecMoteur(m, REGLAGE_DEFAUT);
+      } else if (vitesses) {
+        const r = await zoneTrajet({ vitesses, grille, points, typesById, champs, ventes, cleCA }, z, () => false);
+        t = r ? r.calib.test : null;
+      }
+      if (t && t.n >= 3 && t.erreurMediane != null) resultats.push({ zone: z, erreur: t.erreurMediane, n: t.n });
+    }
+    resultats.sort((a, b) => a.erreur - b.erreur);
+    setComparaison({ resultats, fini: true, encours: null });
+  };
+
   // Magasins jumeaux (étape 3) : profil de chaque point du réseau, puis test « un magasin caché » de la méthode.
   const reseauJ = useMemo(
     () => preparerReseau({ rayonKm, points, typesById, champs, grille, ventes, cleCA, generateurs }),
     [rayonKm, points, typesById, champs, grille, ventes, cleCA, generateurs]
   );
   const testJ = useMemo(() => testerJumeaux(reseauJ), [reseauJ]);
-  const test = calib ? combinerTests(calib.test, testJ) : undefined;
+  const test = calibActif ? combinerTests(calibActif.test, testJ) : undefined;
 
-  const res = useMemo(
+  const resCercle = useMemo(
     () => (position && (calib !== undefined || !grille) ? simuler({ position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceNouveau: surfaceSaisie, reglage: calib ? calib.reglage : REGLAGE_DEFAUT, moteur }) : null),
     [position, rayonKm, points, typesById, champs, demographie, surfaces, grille, ventes, cleCA, surfaceSaisie, calib, moteur]
   );
+  // Zone en temps de trajet : le modèle gravitaire, la population et la cannibalisation viennent de la zone atteinte
+  // en N minutes ; le reste (concurrents proches, jumeaux, passage) garde le cercle.
+  const res = useMemo(() => {
+    if (!trajet) return resCercle;
+    if (!resCercle || !zt || !position) return null;
+    const e = estimerTrajet(zt.moteur, zt.calib.reglage, { vitesses, grille, lat: position.lat, lng: position.lng, surface: Number(surfaceSaisie) > 0 ? Number(surfaceSaisie) : resCercle.surfaceNouveau });
+    if (!e) return resCercle;
+    const surf = resCercle.surfaceNouveau;
+    return {
+      ...resCercle, methodeCA: 'huff', caEstime: e.caEstime, habitantsCaptes: e.habitantsCaptes, caParHabitant: e.caParHabitant,
+      transfert: e.transfert, cannibalisationCA: e.cannibalisationCA, population: e.population, zoneKm2: e.zoneKm2, densite: e.densite,
+      nbValeursCA: e.nbReferences, caParM2: surf ? e.caEstime / surf : null,
+      menages: resCercle.menages && resCercle.population ? Math.round(e.population * resCercle.menages / resCercle.population) : resCercle.menages,
+    };
+  }, [trajet, resCercle, zt, position, vitesses, grille, surfaceSaisie]);
 
   const huff = res && res.methodeCA === 'huff';
   // Profil du site étudié (habitants à 1 et 3 km, pression concurrentielle, surface).
@@ -214,14 +298,70 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
       </SectionTitle>
 
       <div>
-        <label style={labelStyle}>Rayon de la zone de chalandise</label>
+        <label style={labelStyle}>Zone de chalandise</label>
         <div style={{ display: 'flex', gap: '3px', marginTop: '6px', background: C.bg, border: '1px solid ' + C.line, borderRadius: '11px', padding: '3px' }}>
-          {RAYONS.map((r) => (
-            <button key={r} type="button" onClick={() => onRayon(r)} style={{ flex: 1, padding: '7px 0', borderRadius: '8px', border: 'none', background: r === rayonKm ? 'white' : 'transparent', color: r === rayonKm ? C.brand : C.muted, boxShadow: r === rayonKm ? '0 1px 3px rgba(15,23,42,.12)' : 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
-              {km(r)}
-            </button>
-          ))}
+          {[['cercle', 'Cercle'], ['pied', 'À pied'], ['voiture', 'En voiture']].map(([k, l]) => {
+            const actif = k === 'cercle' ? !trajet : trajet && zone.mode === k;
+            return (
+              <button key={k} type="button" disabled={k !== 'cercle' && !vitesses}
+                onClick={() => onZone(k === 'cercle' ? { type: 'cercle' } : { type: 'trajet', mode: k, maxMin: trajet ? zone.maxMin : 10 })}
+                style={{ flex: 1, padding: '7px 0', borderRadius: '8px', border: 'none', background: actif ? 'white' : 'transparent', color: actif ? C.brand : C.muted, boxShadow: actif ? '0 1px 3px rgba(15,23,42,.12)' : 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                {l}
+              </button>
+            );
+          })}
         </div>
+        <div style={{ display: 'flex', gap: '3px', marginTop: '6px', background: C.bg, border: '1px solid ' + C.line, borderRadius: '11px', padding: '3px' }}>
+          {(trajet ? DUREES_ZONE : RAYONS).map((v) => {
+            const actif = trajet ? v === zone.maxMin : v === rayonKm;
+            return (
+              <button key={v} type="button" onClick={() => (trajet ? onZone({ ...zone, maxMin: v }) : onRayon(v))} style={{ flex: 1, padding: '7px 0', borderRadius: '8px', border: 'none', background: actif ? 'white' : 'transparent', color: actif ? C.brand : C.muted, boxShadow: actif ? '0 1px 3px rgba(15,23,42,.12)' : 'none', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+                {trajet ? `${v} min` : km(v)}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: '11px', color: C.muted, marginTop: '5px', lineHeight: 1.45 }}>
+          {trajet
+            ? `Clients à moins de ${zone.maxMin} minutes ${zone.mode === 'pied' ? 'à pied' : 'en voiture'} par les routes réelles. Les concurrents et vos points sont comparés au temps de trajet, pas à la distance.`
+            : 'Cercle à vol d’oiseau autour du point.'}
+        </div>
+        {grille && (
+          <div style={{ marginTop: '8px' }}>
+            {!comparaison ? (
+              <button type="button" onClick={comparer} style={{ border: 'none', background: 'none', padding: 0, color: C.brand, fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Quelle zone prédit le mieux vos ventes ?
+              </button>
+            ) : (
+              <div style={{ ...carte, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={surtitre}>Précision de chaque zone sur vos ventes</div>
+                {!comparaison.fini && (
+                  <div style={{ fontSize: '12px', color: C.muted }}>Test en cours : {libelleZone(comparaison.encours)}… ({comparaison.resultats.length}/{ZONES_COMPAREES.length})</div>
+                )}
+                {comparaison.resultats.map((r, i) => {
+                  const actif = cleZone(r.zone) === cleZone(trajet ? zone : { type: 'cercle', rayonKm });
+                  return (
+                    <div key={cleZone(r.zone)} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px' }}>
+                      <span style={{ flex: 1, color: C.text, fontWeight: i === 0 && comparaison.fini ? 700 : 500 }}>
+                        {libelleZone(r.zone)}{i === 0 && comparaison.fini ? <span style={{ color: C.success, fontWeight: 600 }}> · la plus précise</span> : null}
+                      </span>
+                      <span className="num" style={{ color: C.body }}>écart {Math.round(r.erreur * 100)} %</span>
+                      {actif ? <span style={{ fontSize: '11px', color: C.muted, width: '52px', textAlign: 'right' }}>utilisée</span> : (
+                        <button type="button" onClick={() => (r.zone.type === 'cercle' ? (onZone({ type: 'cercle' }), onRayon(r.zone.rayonKm)) : onZone(r.zone))}
+                          style={{ border: '1px solid ' + C.lineStrong, background: 'white', borderRadius: '7px', padding: '2px 7px', fontSize: '11px', fontWeight: 600, color: C.brand, cursor: 'pointer', width: '52px' }}>Utiliser</button>
+                      )}
+                    </div>
+                  );
+                })}
+                {comparaison.fini && (
+                  <div style={{ fontSize: '11px', color: C.muted, lineHeight: 1.45 }}>
+                    Écart médian entre CA estimé et ventes réelles quand chacun de vos points est caché puis estimé avec cette zone (modèle gravitaire seul, réglé sur vos ventes).
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div>
@@ -245,7 +385,11 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
       )}
 
       {position && !res && (
-        <Empty icon="chart">Réglage du modèle sur vos ventes…</Empty>
+        <Empty icon="chart">
+          {trajet && avancement != null && avancement < 1
+            ? `Calcul des zones à ${zone.maxMin} min de chacun de vos points et des concurrents… ${Math.round(avancement * 100)} %`
+            : 'Réglage du modèle sur vos ventes…'}
+        </Empty>
       )}
 
       {res && (
@@ -253,7 +397,7 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: C.body }}>
             <Icon name="pin" size={16} style={{ color: C.violet }} />
             <b style={{ color: C.text }}>{res.gouvernorat || 'Gouvernorat inconnu'}</b>{position.quartier ? <span style={{ color: C.muted }}>· {position.quartier}</span> : null}
-            <span style={{ marginLeft: 'auto', fontSize: '11px', color: C.faint }}>rayon {km(rayonKm)}</span>
+            <span style={{ marginLeft: 'auto', fontSize: '11px', color: C.faint }}>{trajet ? libelleZone(zone) : `rayon ${km(rayonKm)}`}</span>
           </div>
 
           <div style={{ background: 'radial-gradient(120% 140% at 100% 0%, #4c1d95 0%, #1e1b4b 45%, #0b1020 100%)', borderRadius: '18px', padding: '18px', color: 'white', position: 'relative', overflow: 'hidden', boxShadow: '0 12px 30px rgba(30,27,75,.35)' }}>
@@ -307,10 +451,10 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   </div>
                 </div>
               </div>
-              {calib && calib.testDefaut && calib.reglage !== REGLAGE_DEFAUT && (
+              {calibActif && calibActif.testDefaut && calibActif.reglage !== REGLAGE_DEFAUT && (
                 <div style={{ fontSize: '11.5px', color: C.success, display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Icon name="checkCircle" size={14} />
-                  Modèle gravitaire réglé sur vos ventes : écart ramené de {Math.round(calib.testDefaut.erreurMediane * 100)} % à {Math.round(calib.test.erreurMediane * 100)} %
+                  Modèle gravitaire réglé sur vos ventes : écart ramené de {Math.round(calibActif.testDefaut.erreurMediane * 100)} % à {Math.round(calibActif.test.erreurMediane * 100)} %
                 </div>
               )}
               {(confiance.conseil || masque) && <div style={{ fontSize: '11.5px', color: C.warning }}>{masque ? 'CA non affiché : ' : ''}{confiance.conseil}</div>}
@@ -646,16 +790,16 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
           <details style={{ fontSize: '11.5px', color: C.muted }}>
             <summary style={{ cursor: 'pointer', fontWeight: 600, color: C.body }}>Méthode de calcul</summary>
             <p style={{ margin: '6px 0 0', lineHeight: 1.5 }}>
-              Zone : cercle de {km(rayonKm)} autour du point (à vol d’oiseau). Population : habitants des carrés de 250 m de la grille
+              Zone : {trajet ? `tout ce qui est à moins de ${zone.maxMin} minutes ${zone.mode === 'pied' ? 'à pied' : 'en voiture'} par les routes (voir « Zone accessible »)` : `cercle de ${km(rayonKm)} autour du point (à vol d’oiseau)`}. Population : habitants des carrés de 250 m de la grille
               High Resolution Settlement Layer (Meta et CIESIN, licence CC BY 4.0). Ménages : population ÷ taille moyenne des ménages du gouvernorat (INS).
               {huff ? (
                 <>
-                  {' '}CA : chaque carré de 250 m partage ses habitants entre tous les points à moins de {km(rayonKm)} (les vôtres, les concurrents
-                  et le point étudié), au prorata de surface^α ÷ distance^β. Le CA de vos points (moyenne des 12 derniers mois de ventes,
+                  {' '}CA : chaque carré de 250 m partage ses habitants entre tous les points {trajet ? `à moins de ${zone.maxMin} min de trajet` : `à moins de ${km(rayonKm)}`} (les vôtres, les concurrents
+                  et le point étudié), au prorata de surface^α ÷ {trajet ? 'temps de trajet' : 'distance'}^β. Le CA de vos points (moyenne des 12 derniers mois de ventes,
                   sinon le champ choisi) est comparé à leurs habitants captés^γ ; on retient le rapport médian, appliqué au point étudié.
-                  Réglage utilisé : α = {fmtReglage(calib ? calib.reglage.alpha : REGLAGE_DEFAUT.alpha)} (poids de la surface),
-                  β = {fmtReglage(calib ? calib.reglage.beta : REGLAGE_DEFAUT.beta)} (effet de la distance),
-                  γ = {fmtReglage(calib ? calib.reglage.gamma : REGLAGE_DEFAUT.gamma)} (rendement des habitants : sous 1, chaque habitant de plus
+                  Réglage utilisé : α = {fmtReglage(calibActif ? calibActif.reglage.alpha : REGLAGE_DEFAUT.alpha)} (poids de la surface),
+                  β = {fmtReglage(calibActif ? calibActif.reglage.beta : REGLAGE_DEFAUT.beta)} (effet {trajet ? 'du temps de trajet' : 'de la distance'}),
+                  γ = {fmtReglage(calibActif ? calibActif.reglage.gamma : REGLAGE_DEFAUT.gamma)} (rendement des habitants : sous 1, chaque habitant de plus
                   rapporte un peu moins). Ces valeurs sont choisies automatiquement parmi 64 combinaisons, celle qui donne le plus petit
                   écart au test sur vos ventes ; avec moins de 8 points testés, on garde α = 1, β = 2, γ = 1. Cannibalisation : CA que le point étudié prend à vos points voisins, en part de son CA.
                   Surface inconnue : surface médiane de vos points.

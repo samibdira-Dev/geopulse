@@ -62,6 +62,7 @@ export default function ProPage() {
   const [delegations, setDelegations] = useState(null);
   const demographie = useMemo(() => fusionnerDemographie(delegations, demographieTable), [delegations, demographieTable]);
   const [rayonKm, setRayonKm] = useState(1);
+  const [zoneSim, setZoneSim] = useState({ type: 'cercle' }); // zone du simulateur : cercle ou temps de trajet
   const [gouvDemo, setGouvDemo] = useState('Tous');
   const [carteDemo, setCarteDemo] = useState('densite');
   const requete = useRef(0);
@@ -431,6 +432,8 @@ export default function ProPage() {
                 position={position}
                 rayonKm={rayonKm}
                 onRayon={setRayonKm}
+                zone={zoneSim}
+                onZone={setZoneSim}
                 points={points}
                 typesById={typesById}
                 champs={champs}
@@ -569,7 +572,7 @@ export default function ProPage() {
           delegations={tab === 'demographie' ? delegations : null}
           carteDelegations={carteDemo}
           isochrone={tab === 'simuler' && position ? isochrone : null}
-          zoneKm={tab === 'simuler' && position ? rayonKm : null}
+          zoneKm={tab === 'simuler' && position && zoneSim.type === 'cercle' ? rayonKm : null}
         />
       </section>
     </div>
