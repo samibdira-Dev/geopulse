@@ -9,7 +9,7 @@ import { APPAREILS, IconeEtape, etapes, useInstallation } from '../components/In
 const ETAPES = [
   ['upload', 'Importez votre réseau', 'Vos magasins, clients et concurrents depuis Excel ou votre ERP, avec leurs ventes mois par mois. Chaque point garde son code ERP.'],
   ['globe', 'Lisez votre territoire', 'Population au carré de 250 m, pouvoir d’achat, concurrence et zones couvertes ou délaissées, gouvernorat par gouvernorat.'],
-  ['target', 'Décidez où ouvrir', 'Touchez la carte : GeoPulse estime le chiffre d’affaires du futur point, sa fourchette, sa note de fiabilité et son point mort.'],
+  ['target', 'Agissez sur vos chiffres', 'Points à redresser, zones à prospecter, emplacements à ouvrir : GeoPulse estime le chiffre d’affaires de chaque piste avant que vous n’investissiez.'],
 ];
 
 const FONCTIONS = [
@@ -61,10 +61,10 @@ export default function Accueil() {
       <section className="acc-hero">
         <div className="acc-hero-texte">
           <span className="acc-badge">Géomarketing · Tunisie</span>
-          <h1>Décidez où ouvrir.<br /><span className="acc-degrade">Avec des chiffres.</span></h1>
+          <h1>Pilotez votre réseau.<br /><span className="acc-degrade">Gagnez du terrain.</span></h1>
           <p>
-            GeoPulse réunit sur une seule carte votre réseau, vos concurrents, la population et vos ventes, puis estime le
-            chiffre d’affaires d’un nouvel emplacement avant que vous n’investissiez.
+            Points de vente, clients, concurrents, population et ventes réunis sur une seule carte : suivez la performance
+            de chaque point, repérez les zones où vous n’êtes pas encore et mesurez le potentiel de chaque territoire.
           </p>
           <div className="acc-actions">
             <a href="/pro#inscription" className="acc-btn acc-btn-principal">Demander l’ouverture</a>

@@ -2,7 +2,7 @@ import './globals.css'
 import EnregistrerSW from '../components/EnregistrerSW'
 
 export const metadata = {
-  title: 'GeoPulse - Géomarketing Tunisie',
+  title: 'GeoPulse – Géomarketing Tunisie',
   description: 'Solution de géomarketing et d’optimisation de réseaux de points de vente en Tunisie',
   manifest: '/manifest.webmanifest',
   icons: { icon: '/icons/favicon-64.png', apple: '/icons/apple-touch-icon.png' },
