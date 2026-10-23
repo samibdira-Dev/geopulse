@@ -8,6 +8,7 @@ import { calculerRentabilite, parametresDuType } from '../lib/rentabilite';
 import { depenseDuType, potentielMarche, reperesReseau } from '../lib/marche';
 import { NB_JUMEAUX, estimerParJumeaux, preparerReseau, profilSite, testerJumeaux } from '../lib/jumeaux';
 import { REGLAGE_DEFAUT } from '../lib/simulation';
+import { COULEURS_DUREES, DUREES, calculerIsochrone, chargerVitesses, habitantsParDuree, imageIsochrone, tempsJusqua } from '../lib/isochrones';
 import { COULEURS_GENERATEURS, SINGULIERS, chargerGenerateurs, niveauPassage, passageAutour } from '../lib/generateurs';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
 import Icon from './icons';
@@ -43,7 +44,7 @@ function NoteBadge({ note, clair }) {
 }
 
 // Simulateur d'emplacement : population de la zone, cannibalisation, concurrence et CA estimé.
-export default function SimulationPanel({ position, rayonKm, onRayon, points, typesById, champs, demographie, surfaces, ventes, onAjouter }) {
+export default function SimulationPanel({ position, rayonKm, onRayon, points, typesById, champs, demographie, surfaces, ventes, onAjouter, onIsochrone }) {
   const typesPdv = useMemo(() => Object.values(typesById).filter((t) => ['point_de_vente', 'client'].includes(t.categorie)).map((t) => t.id), [typesById]);
   const champsDispo = useMemo(() => champsCA(champs, typesPdv), [champs, typesPdv]);
   const [cleCA, setCleCA] = useState('');
@@ -65,6 +66,15 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     chargerGenerateurs().then((g) => { if (actif) setGenerateurs(g); }).catch(() => {});
     return () => { actif = false; };
   }, []);
+
+  // Temps de trajet réels : carte des vitesses (~450 Ko), chargée avec le simulateur.
+  const [vitesses, setVitesses] = useState(null);
+  useEffect(() => {
+    let actif = true;
+    chargerVitesses().then((v) => { if (actif) setVitesses(v); }).catch(() => {});
+    return () => { actif = false; };
+  }, []);
+  const [modeTrajet, setModeTrajet] = useState('voiture');
 
   // Surface du point simulé (m²) : vide = surface médiane de vos points.
   const [surfaceSaisie, setSurfaceSaisie] = useState('');
@@ -142,6 +152,24 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     const v = reseauJ.refs.map((r) => r.profil.passage);
     return Math.round((100 * v.filter((x) => x < passage.score).length) / v.length);
   }, [passage, reseauJ]);
+  // Zones accessibles en 5, 10 et 15 minutes autour du site, et ce qu'elles contiennent.
+  const iso = useMemo(
+    () => (position && vitesses && modeTrajet !== 'masquer' ? calculerIsochrone(vitesses, position.lat, position.lng, { mode: modeTrajet, maxMin: 15 }) : null),
+    [position, vitesses, modeTrajet]
+  );
+  const zones = useMemo(() => {
+    if (!iso) return null;
+    const hab = grille ? habitantsParDuree(grille, iso) : null;
+    const categorie = (p) => (typesById[p.type_id] || {}).categorie;
+    const valides = points.filter((p) => p.statut === 'valide');
+    const compter = (cats, d) => valides.filter((p) => cats.includes(categorie(p)) && tempsJusqua(iso, p.latitude, p.longitude) <= d).length;
+    return DUREES.map((d) => ({ d, habitants: hab ? hab[d] : null, reseau: compter(['point_de_vente', 'client'], d), concurrents: compter(['concurrent'], d) }));
+  }, [iso, grille, points, typesById]);
+  useEffect(() => {
+    if (onIsochrone) onIsochrone(iso ? imageIsochrone(iso) : null);
+  }, [iso, onIsochrone]);
+  useEffect(() => () => { if (onIsochrone) onIsochrone(null); }, [onIsochrone]);
+
   const couleurPassage = !passage ? C.text : passage.indice >= 60 ? C.success : passage.indice >= 40 ? C.brand : passage.indice >= 20 ? C.warning : C.danger;
 
   // Rentabilité : paramètres du type choisi, sinon du premier type de point de vente qui en a.
@@ -342,6 +370,47 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                     ? 'Le site capterait une part du marché plus faible que vos points : la zone peut porter davantage.'
                     : 'Part du marché captée cohérente avec celle de vos points.')}
               </div>
+            </div>
+          )}
+
+          {vitesses && (
+            <div style={{ ...carte, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ ...surtitre, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="crosshair" size={13} />Zone accessible</div>
+                <div style={{ display: 'flex', gap: '2px', background: C.bg, border: '1px solid ' + C.line, borderRadius: '9px', padding: '2px' }}>
+                  {[['voiture', 'Voiture'], ['pied', 'À pied'], ['masquer', 'Masquer']].map(([m, l]) => (
+                    <button key={m} type="button" onClick={() => setModeTrajet(m)} style={{ border: 'none', borderRadius: '7px', padding: '4px 8px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', background: modeTrajet === m ? 'white' : 'transparent', color: modeTrajet === m ? C.brand : C.muted, boxShadow: modeTrajet === m ? '0 1px 3px rgba(15,23,42,.12)' : 'none' }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              {zones && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', columnGap: '12px', rowGap: '6px', alignItems: 'center', fontSize: '12.5px' }}>
+                    <span style={surtitre}>Trajet</span><span style={surtitre}>Habitants</span><span style={surtitre}>Vos points</span><span style={surtitre}>Concurrents</span>
+                    {zones.map((z) => [
+                      <span key={z.d + 't'} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: C.text }}>
+                        <span style={{ width: 10, height: 10, borderRadius: 3, background: `rgb(${COULEURS_DUREES[z.d].join(',')})` }} />{z.d} min
+                      </span>,
+                      <b key={z.d + 'h'} className="num" style={{ color: C.text }}>{z.habitants != null ? fmt(z.habitants) : '—'}</b>,
+                      <span key={z.d + 'r'} className="num" style={{ textAlign: 'right', color: C.body }}>{z.reseau}</span>,
+                      <span key={z.d + 'c'} className="num" style={{ textAlign: 'right', color: z.concurrents ? C.danger : C.body }}>{z.concurrents}</span>,
+                    ])}
+                  </div>
+                  {depense && zones[1].habitants > 0 && (() => {
+                    const m = potentielMarche(zones[1].habitants, depense.mensuelle, res.gouvernorat);
+                    return m ? (
+                      <div style={{ fontSize: '11.5px', color: C.body, lineHeight: 1.5 }}>
+                        Marché à 10 min {modeTrajet === 'voiture' ? 'en voiture' : 'à pied'} : <b className="num" style={{ color: C.text }}>{fmt(m.potentiel)} TND/mois</b> de dépense des habitants dans le secteur.
+                      </div>
+                    ) : null;
+                  })()}
+                  <div style={{ fontSize: '11px', color: C.muted, lineHeight: 1.45 }}>
+                    {modeTrajet === 'voiture'
+                      ? 'Temps par la route, hors heures de pointe, selon le type de route et ralenti en ville dense. Zones dessinées sur la carte.'
+                      : 'Marche à 4,5 km/h par les rues et chemins. Zones dessinées sur la carte.'}
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -605,6 +674,15 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                 <>
                   {' '}Cannibalisation : part de la zone déjà à moins de {km(rayonKm)} d’un de vos points validés.
                   CA : médiane du CA mensuel de vos points validés × (1 − cannibalisation ÷ 2).
+                </>
+              )}
+              {vitesses && (
+                <>
+                  {' '}Zone accessible : réseau routier Overture Maps Foundation (octobre 2026, licence ODbL), découpé en carrés de 250 m.
+                  Chaque carré prend la vitesse moyenne de sa meilleure route (autoroute 100 km/h, route nationale 75, principale 60,
+                  secondaire 50, régionale 40, rue 25, piste 15), réduite de 20 à 55 % selon la densité de population (trafic et carrefours) ;
+                  hors route, 6 km/h jusqu’à la route. Le temps se cumule de carré en carré par le chemin le plus rapide. Contrôle :
+                  Tunis Passage → Ariana 8 min, → Le Bardo 10 min hors pointe. Aux heures de pointe, comptez davantage en ville.
                 </>
               )}
               {passage && (

@@ -44,6 +44,7 @@ export default function ProPage() {
   const [geo, setGeo] = useState(null);
   const [ventes, setVentes] = useState({}); // id du point -> synthèse des ventes (ventes_resume)
   const [filtreTypes, setFiltreTypes] = useState([]); // types affichés sur la carte ; vide = tous
+  const [isochrone, setIsochrone] = useState(null); // zones à 5, 10, 15 min autour de l'emplacement simulé (image)
   const [classesGen, setClassesGen] = useState([]); // classes de générateurs de trafic affichées ; vide = couche masquée
   const [generateurs, setGenerateurs] = useState(null);
   // Générateurs de trafic : chargés une fois la société ouverte (indice de passage des points, couche de la carte).
@@ -417,6 +418,7 @@ export default function ProPage() {
                 surfaces={surfaces}
                 ventes={ventes}
                 onAjouter={() => { setEditing(null); setTab('nouveau'); }}
+                onIsochrone={setIsochrone}
               />
             )}
 
@@ -533,6 +535,7 @@ export default function ProPage() {
           classesGenerateurs={classesGen}
           selectedGouv={tab === 'demographie' ? gouvDemo : null}
           delegations={tab === 'demographie' ? delegations : null}
+          isochrone={tab === 'simuler' && position ? isochrone : null}
           zoneKm={tab === 'simuler' && position ? rayonKm : null}
         />
       </section>

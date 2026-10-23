@@ -1,5 +1,5 @@
 'use client';
-import { MapContainer, TileLayer, Marker, CircleMarker, Popup, GeoJSON, Circle, ZoomControl, Pane, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, CircleMarker, Popup, GeoJSON, Circle, ImageOverlay, ZoomControl, Pane, useMapEvents, useMap } from 'react-leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -147,6 +147,7 @@ export default function ProMap({
   generateurs = null,    // générateurs de trafic (lib/generateurs.js), affichés si des classes sont actives
   classesGenerateurs = [], // clés des classes de générateurs affichées
   delegations = null,    // contours et chiffres des délégations (lib/recensement.js) : carte de densité
+  isochrone = null,      // zones accessibles autour de l'emplacement simulé : { url, bounds } (lib/isochrones.js)
 }) {
   const [geoData, setGeoData] = useState(null);
 
@@ -373,6 +374,12 @@ export default function ProMap({
             pathOptions={{ color: '#2563eb', weight: 1, fillColor: '#3b82f6', fillOpacity: 0.15 }}
             interactive={false}
           />
+        )}
+
+        {isochrone && (
+          <Pane name="isochrone" style={{ zIndex: 390, pointerEvents: 'none' }}>
+            <ImageOverlay url={isochrone.url} bounds={isochrone.bounds} opacity={0.6} className="gp-isochrone" />
+          </Pane>
         )}
 
         {simulatedPoint && zoneKm && (
