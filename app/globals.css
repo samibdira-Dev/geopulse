@@ -101,7 +101,7 @@ button:not(:disabled):active { transform: translateY(1px); }
   .pro-side > * { pointer-events: auto; }
   .pro-rail { width: 100% !important; height: auto !important; flex-direction: row !important; overflow-x: auto; gap: 0 !important; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)) !important; }
   .pro-rail .gp-rail-logo, .pro-rail .gp-rail-bas { display: none !important; }
-  .pro-rail nav { flex-direction: row !important; gap: 2px !important; width: 100%; }
+  .pro-rail nav { flex-direction: row !important; gap: 2px !important; width: 100%; overflow: visible !important; flex: none !important; }
   .pro-rail .gp-rail-item { flex: 1 0 64px; min-width: 64px !important; padding: 7px 2px 6px !important; }
   .pro-rail .gp-rail-item span { white-space: nowrap; font-size: 10px !important; }
   .pro-rail .gp-rail-item span:empty { display: none; }
@@ -161,3 +161,5 @@ button:not(:disabled):active { transform: translateY(1px); }
   .gp-login { flex-direction: column !important; }
   .gp-login-pitch { display: none !important; }
 }
+
+.gp-rail-nav::-webkit-scrollbar { display: none; }

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { traduireErreur } from '../lib/points';
 import { C, Message, btn, carte, chip, ghostBtn, inputStyle, labelStyle, surtitre } from './ui';
 import Icon, { Logo } from './icons';
+import ConsoleAbonnements from './ConsoleAbonnements';
 
 export const STATUTS_SOCIETE = {
   en_attente: { label: 'En attente', color: '#b45309', bg: '#fffbeb' },
@@ -11,7 +12,7 @@ export const STATUTS_SOCIETE = {
   suspendue: { label: 'Suspendue', color: '#b91c1c', bg: '#fef2f2' },
   refusee: { label: 'Refusée', color: '#475569', bg: '#f1f5f9' },
 };
-const FORMULES = ['Essai', 'Standard', 'Premium', 'Sur mesure'];
+const FORMULES = ['Essai', 'Essentiel', 'Pro', 'Entreprise'];
 const GENRES = { appel: 'Appel', rdv: 'Rendez-vous', relance: 'Relance', note: 'Note', statut: 'Statut' };
 
 const JOUR = 86400000;
@@ -86,10 +87,18 @@ export default function ConsolePlateforme({ session, onSignOut }) {
   });
   const detail = choisie && liste.find((s) => s.id === choisie);
 
+  // Validation d'une nouvelle société : essai gratuit (durée réglée dans « RIB et formules », 30 jours sinon).
   const changerStatut = async (s, statut) => {
+    let fin = s.fin_abonnement;
+    if (statut === 'active' && !fin) {
+      const { data } = await supabase.from('plateforme_parametres').select('essai_jours').eq('id', 1).maybeSingle();
+      const d = new Date();
+      d.setDate(d.getDate() + ((data && data.essai_jours) || 30));
+      fin = d.toISOString().slice(0, 10);
+    }
     const { error } = await supabase.rpc('plateforme_maj_societe', {
       p_societe: s.id, p_statut: statut, p_formule: s.formule || (statut === 'active' ? 'Essai' : null),
-      p_fin_abonnement: s.fin_abonnement, p_contact: s.contact, p_telephone: s.telephone,
+      p_fin_abonnement: fin, p_contact: s.contact, p_telephone: s.telephone,
     });
     if (error) { setErreur(traduireErreur(error)); return; }
     charger();
@@ -154,6 +163,8 @@ export default function ConsolePlateforme({ session, onSignOut }) {
                 </div>
               </section>
             )}
+
+            <ConsoleAbonnements onChanged={charger} />
 
             <section className="gp-console-corps" style={{ display: 'grid', gridTemplateColumns: detail ? 'minmax(0, 1fr) 420px' : 'minmax(0, 1fr)', gap: '16px', alignItems: 'start' }}>
               <div style={{ ...carte, padding: 0, overflow: 'hidden' }}>
@@ -335,7 +346,7 @@ function FicheClient({ societe, moi, onFermer, onChanged }) {
           <label style={labelStyle}>Formule
             <select {...champ('formule')} style={inputStyle}>
               <option value="">—</option>
-              {FORMULES.map((x) => <option key={x} value={x}>{x}</option>)}
+              {[...FORMULES, ...(f.formule && !FORMULES.includes(f.formule) ? [f.formule] : [])].map((x) => <option key={x} value={x}>{x}</option>)}
             </select>
           </label>
           <label style={labelStyle}>Fin d’abonnement

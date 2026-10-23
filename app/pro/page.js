@@ -13,6 +13,8 @@ import JournalPanel from '../../components/JournalPanel';
 import VisitesPanel from '../../components/VisitesPanel';
 import SaisonsPanel from '../../components/SaisonsPanel';
 import CouverturePanel from '../../components/CouverturePanel';
+import AbonnementPanel from '../../components/AbonnementPanel';
+import { etatAbonnement } from '../../lib/abonnement';
 import { hexEn } from '../../lib/couverture';
 import TeamPanel from '../../components/TeamPanel';
 import TypesAdmin from '../../components/TypesAdmin';
@@ -192,6 +194,15 @@ export default function ProPage() {
 
   useEffect(() => { charger(); }, [charger]);
 
+  // Échéance de l'abonnement (administrateur) : bandeau de renouvellement. Ignorée sans le script abonnement.sql.
+  const [finAbonnement, setFinAbonnement] = useState(null);
+  useEffect(() => {
+    setFinAbonnement(null);
+    if (!membership || membership.role !== 'admin') return;
+    supabase.rpc('abonnement_societe', { p_societe: membership.societe_id }).then(({ data }) => setFinAbonnement(((data || [])[0] || {}).fin_abonnement || null));
+  }, [membership]);
+  const echeance = etatAbonnement(finAbonnement);
+
   const cleComparateur = membership ? 'gp-comparateur-' + membership.societe_id : null;
   useEffect(() => {
     if (!cleComparateur) return;
@@ -353,7 +364,7 @@ export default function ProPage() {
     ['visites', 'calendar', 'Visites'],
     ['demographie', 'users', 'Démo\u00ADgraphie'],
     ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'upload', 'Import'], ['saisons', 'chart', 'Saisons'], ['couverture', 'hexagon', 'Couver\u00ADture']] : []),
-    ...(role === 'admin' ? [['types', 'tag', 'Types'], ['equipe', 'team', 'Équipe']] : []),
+    ...(role === 'admin' ? [['types', 'tag', 'Types'], ['equipe', 'team', 'Équipe'], ['abonnement', 'wallet', 'Abon\u00ADnement']] : []),
     ...(manager ? [['journal', 'history', 'Journal']] : []),
   ];
   const email = session.user.email || '';
@@ -363,13 +374,13 @@ export default function ProPage() {
     <div className={'pro-layout feuille-' + feuille} style={{ display: 'flex', height: '100vh', background: C.bg }}>
       <aside className="pro-side" style={{ flex: 'none', height: '100%', display: 'flex', boxShadow: '1px 0 0 ' + C.line, zIndex: 2 }}>
         {/* Rail de navigation */}
-        <div className="pro-rail" style={{ width: '84px', background: C.ink, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 10px', gap: '18px', boxSizing: 'border-box' }}>
+        <div className="pro-rail" style={{ width: '84px', background: C.ink, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 10px', gap: '12px', boxSizing: 'border-box' }}>
           <div className="gp-rail-logo"><Logo size={40} /></div>
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+          <nav className="gp-rail-nav" style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', scrollbarWidth: 'none' }}>
             {onglets.map(([k, icone, label, badge]) => (
               <button key={k} type="button" onClick={() => choisirOnglet(k)} title={label.replace('\u00AD', '')}
                 className={'gp-rail-item' + (tab === k ? ' actif' : '')}
-                style={{ position: 'relative', border: 'none', background: undefined, borderRadius: '12px', padding: '9px 2px 8px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', minWidth: '62px' }}>
+                style={{ position: 'relative', border: 'none', background: undefined, borderRadius: '12px', padding: '7px 2px 6px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', minWidth: '62px', flex: 'none' }}>
                 <Icon name={icone} size={20} />
                 <span style={{ fontSize: '10.5px', fontWeight: 600, letterSpacing: '.01em', lineHeight: 1.1, textAlign: 'center' }}>{label}</span>
                 {badge ? (
@@ -433,6 +444,14 @@ export default function ProPage() {
 
           <div className="gp-scroll" style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {info && <Message type={info.type}>{info.text}</Message>}
+            {(echeance.cle === 'bientot' || echeance.cle === 'expire') && tab !== 'abonnement' && (
+              <button type="button" onClick={() => setTab('abonnement')}
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid ' + (echeance.cle === 'expire' ? '#fecaca' : '#fde68a'), background: echeance.cle === 'expire' ? '#fef2f2' : '#fffbeb', color: echeance.cle === 'expire' ? '#b91c1c' : '#92400e', borderRadius: '12px', padding: '10px 12px', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                <Icon name="alert" size={17} />
+                <span style={{ flex: 1 }}>{echeance.cle === 'expire' ? 'Votre abonnement a expiré.' : `Votre abonnement se termine dans ${echeance.jours} jour${echeance.jours > 1 ? 's' : ''}.`} Renouvelez-le pour garder l’accès.</span>
+                <Icon name="chevron" size={14} />
+              </button>
+            )}
 
             {tab === 'nouveau' && (typesActifs.length === 0 ? (
               <Message>Aucun type de point actif. {role === 'admin' ? 'Créez-en un dans l’onglet « Types ».' : 'Demandez à votre administrateur d’en créer un.'}</Message>
@@ -503,6 +522,10 @@ export default function ProPage() {
               <CouverturePanel points={points} typesById={typesById} champs={champs} ventes={ventes} delegations={delegations}
                 taille={tailleCouv} onTaille={(t) => { setTailleCouv(t); setHexChoisi(-1); }} resultat={couverture} onResultat={setCouverture}
                 choisi={hexChoisi} onChoisir={setHexChoisi} onVoir={(lat, lng, zoom) => { setFeuille('ferme'); setView({ center: [lat, lng], zoom }); }} />
+            )}
+
+            {tab === 'abonnement' && role === 'admin' && (
+              <AbonnementPanel societeId={membership.societe_id} societeNom={societe ? societe.nom : ''} />
             )}
 
             {tab === 'types' && role === 'admin' && (
