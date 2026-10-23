@@ -309,7 +309,7 @@ export default function ProPage() {
     ['simuler', 'target', 'Simuler'],
     ['points', 'list', 'Points'],
     ['demographie', 'users', 'Démo\u00ADgraphie'],
-    ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'chart', 'Ventes']] : []),
+    ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'chart', 'Import']] : []),
     ...(role === 'admin' ? [['types', 'tag', 'Types'], ['equipe', 'team', 'Équipe']] : []),
     ...(manager ? [['journal', 'history', 'Journal']] : []),
   ];
@@ -437,7 +437,7 @@ export default function ProPage() {
             )}
 
             {tab === 'ventes' && manager && (
-              <VentesImport societeId={membership.societe_id} points={points} onChanged={charger} />
+              <VentesImport societeId={membership.societe_id} points={points} types={types} champs={champs} onChanged={charger} />
             )}
 
             {tab === 'types' && role === 'admin' && (

@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { traduireErreur } from '../lib/points';
 import { devinerColonnes, lireFichier, preparerImport } from '../lib/ventes';
-import { btn, ghostBtn, inputStyle, labelStyle, Message, SectionTitle } from './ui';
+import { C, btn, ghostBtn, inputStyle, labelStyle, Message, SectionTitle } from './ui';
+import PointsImport from './PointsImport';
 
 const fmt = (n) => (n == null ? '—' : Math.round(n).toLocaleString('fr-FR'));
 const moisLabel = (p) => (p ? new Date(p + 'T12:00:00').toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }) : '—');
@@ -15,8 +16,27 @@ const CHAMPS = [
 ];
 const LOT = 500;
 
-// Réservé aux managers et administrateurs : import des ventes (Excel / CSV d'un ERP) et synthèse mensuelle.
-export default function VentesImport({ societeId, points, onChanged }) {
+// Réservé aux managers et administrateurs : import des points ou des ventes (Excel / CSV d'un ERP).
+export default function VentesImport({ societeId, points, types = [], champs = [], onChanged }) {
+  const [vue, setVue] = useState(points.length ? 'ventes' : 'points');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <SectionTitle icon="chart" title={'Import'}>
+        Ajoutez vos points et vos ventes depuis un fichier Excel ou CSV exporté de votre ERP.
+      </SectionTitle>
+      <div style={{ display: 'flex', gap: '2px', background: C.bg, border: '1px solid ' + C.line, borderRadius: '10px', padding: '3px' }}>
+        {[['points', 'Points et leurs données'], ['ventes', 'Ventes mensuelles']].map(([m, l]) => (
+          <button key={m} type="button" onClick={() => setVue(m)} style={{ flex: 1, border: 'none', borderRadius: '8px', padding: '6px 8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: vue === m ? 'white' : 'transparent', color: vue === m ? C.brand : C.muted, boxShadow: vue === m ? '0 1px 3px rgba(15,23,42,.12)' : 'none' }}>{l}</button>
+        ))}
+      </div>
+      {vue === 'points'
+        ? <PointsImport societeId={societeId} types={types} champs={champs} points={points} onChanged={onChanged} />
+        : <ImportVentes societeId={societeId} points={points} onChanged={onChanged} />}
+    </div>
+  );
+}
+
+function ImportVentes({ societeId, points, onChanged }) {
   const [fichier, setFichier] = useState(null);
   const [table, setTable] = useState(null);
   const [colonnes, setColonnes] = useState(null);
@@ -78,9 +98,9 @@ export default function VentesImport({ societeId, points, onChanged }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <SectionTitle icon="chart" title={'Ventes'}>
-        Importez un export Excel ou CSV de votre ERP : une ligne par facture ou par mois, avec le code client, la date et le montant. Chaque ligne est reliée au point qui porte le même « Code client (ERP) ».
-      </SectionTitle>
+      <div style={{ fontSize: '12.5px', color: C.body, lineHeight: 1.5 }}>
+        Une ligne par facture ou par mois, avec le code client, la date et le montant. Chaque ligne est reliée au point qui porte le même « Code client (ERP) ».
+      </div>
 
       {avecCode === 0 && (
         <Message>Aucun point n’a encore de code client. Renseignez le champ « Code client (ERP) » sur vos points pour pouvoir y relier les ventes.</Message>
