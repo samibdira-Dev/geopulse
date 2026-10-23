@@ -8,6 +8,7 @@ import { calculerRentabilite, parametresDuType } from '../lib/rentabilite';
 import { depenseDuType, potentielMarche, reperesReseau } from '../lib/marche';
 import { NB_JUMEAUX, estimerParJumeaux, preparerReseau, profilSite, testerJumeaux } from '../lib/jumeaux';
 import { REGLAGE_DEFAUT } from '../lib/simulation';
+import { COULEURS_GENERATEURS, SINGULIERS, chargerGenerateurs, niveauPassage, passageAutour } from '../lib/generateurs';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
 import Icon from './icons';
 
@@ -57,6 +58,13 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
     chargerGrille().then((g) => { if (actif) setGrille(g); }).catch(() => {});
     return () => { actif = false; };
   }, []);
+  // Générateurs de trafic (gares, marchés, écoles…), chargés avec le simulateur ; sans eux, tout le reste fonctionne.
+  const [generateurs, setGenerateurs] = useState(null);
+  useEffect(() => {
+    let actif = true;
+    chargerGenerateurs().then((g) => { if (actif) setGenerateurs(g); }).catch(() => {});
+    return () => { actif = false; };
+  }, []);
 
   // Surface du point simulé (m²) : vide = surface médiane de vos points.
   const [surfaceSaisie, setSurfaceSaisie] = useState('');
@@ -97,8 +105,8 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
 
   // Magasins jumeaux (étape 3) : profil de chaque point du réseau, puis test « un magasin caché » de la méthode.
   const reseauJ = useMemo(
-    () => preparerReseau({ rayonKm, points, typesById, champs, grille, ventes, cleCA }),
-    [rayonKm, points, typesById, champs, grille, ventes, cleCA]
+    () => preparerReseau({ rayonKm, points, typesById, champs, grille, ventes, cleCA, generateurs }),
+    [rayonKm, points, typesById, champs, grille, ventes, cleCA, generateurs]
   );
   const testJ = useMemo(() => testerJumeaux(reseauJ), [reseauJ]);
   const test = calib ? combinerTests(calib.test, testJ) : undefined;
@@ -113,10 +121,10 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   const profilEtudie = useMemo(() => {
     if (!res || !reseauJ || !grille) return null;
     const surface = Number(surfaceSaisie) > 0 ? Number(surfaceSaisie) : reseauJ.surfaceMediane;
-    return profilSite(grille, position.lat, position.lng, rayonKm, reseauJ.concurrents, surface);
-  }, [res, reseauJ, surfaceSaisie, grille, position, rayonKm]);
+    return profilSite(grille, position.lat, position.lng, rayonKm, reseauJ.concurrents, surface, generateurs);
+  }, [res, reseauJ, surfaceSaisie, grille, position, rayonKm, generateurs]);
   const jum = useMemo(
-    () => (huff && profilEtudie && testJ ? estimerParJumeaux(reseauJ, profilEtudie, { typeId: typeSaisi || null, theta: testJ.theta }) : null),
+    () => (huff && profilEtudie && testJ ? estimerParJumeaux(reseauJ, profilEtudie, { typeId: typeSaisi || null, theta: testJ.theta, passage: testJ.passage }) : null),
     [huff, profilEtudie, reseauJ, testJ, typeSaisi]
   );
   // CA central : moyenne des deux méthodes quand les jumeaux sont disponibles.
@@ -126,6 +134,15 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   const plage = confiance && confiance.note !== 'D' ? fourchette(test, caCentral, jum ? [res.caEstime, jum.estime] : []) : null;
   const masque = confiance && confiance.note === 'D' && caCentral != null;
   const nomType = (id) => (typesById[id] || {}).nom || '';
+
+  // Passage : générateurs de trafic autour du site, indice national et rang parmi vos points.
+  const passage = useMemo(() => (position && generateurs ? passageAutour(generateurs, position.lat, position.lng, 0.5) : null), [position, generateurs]);
+  const rangPassage = useMemo(() => {
+    if (!passage || !reseauJ || !reseauJ.refs.length || reseauJ.refs[0].profil.passage == null) return null;
+    const v = reseauJ.refs.map((r) => r.profil.passage);
+    return Math.round((100 * v.filter((x) => x < passage.score).length) / v.length);
+  }, [passage, reseauJ]);
+  const couleurPassage = !passage ? C.text : passage.indice >= 60 ? C.success : passage.indice >= 40 ? C.brand : passage.indice >= 20 ? C.warning : C.danger;
 
   // Rentabilité : paramètres du type choisi, sinon du premier type de point de vente qui en a.
   const typeRenta = typeSaisi ? typesById[typeSaisi] : typesExploitation.find((t) => parametresDuType(t)) || typesExploitation[0];
@@ -328,6 +345,53 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
             </div>
           )}
 
+          {passage && (
+            <div style={{ ...carte, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ ...surtitre, display: 'flex', alignItems: 'center', gap: '6px' }}><Icon name="activity" size={13} />Passage</div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: couleurPassage, background: couleurPassage + '14', padding: '3px 9px', borderRadius: '999px' }}>{niveauPassage(passage.indice)}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px' }}>
+                <div>
+                  <div style={{ fontSize: '11.5px', color: C.muted }}>Indice de passage</div>
+                  <div className="num" style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '-.02em', color: C.text }}>{passage.indice}<span style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}> /100</span></div>
+                </div>
+                <div style={{ flex: 1, paddingBottom: '7px' }}>
+                  <div style={{ height: '6px', borderRadius: '6px', background: '#eef0f4', overflow: 'hidden' }}>
+                    <div style={{ width: Math.max(3, passage.indice) + '%', height: '100%', borderRadius: '6px', background: couleurPassage }} />
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: '11.5px', color: C.body, lineHeight: 1.5 }}>
+                Plus de passage que là où vivent {passage.indice} % des Tunisiens
+                {rangPassage != null ? <>, et que <b>{rangPassage} %</b> de vos points</> : ''}.
+              </div>
+              {passage.parClasse.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {passage.parClasse.map((c) => (
+                    <div key={c.cle} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', padding: '5px 0', borderTop: '1px solid ' + C.line, color: C.body }}>
+                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: COULEURS_GENERATEURS[c.cle], flex: 'none' }} />
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <b style={{ color: C.text }}>{c.n}</b> {c.n === 1 ? SINGULIERS[c.cle] : c.libelle.toLowerCase()}
+                        {c.plusProche && c.plusProche.nom ? <span style={{ color: C.muted }}> · {c.plusProche.nom}</span> : null}
+                      </span>
+                      <span className="num" style={{ color: C.muted, flex: 'none' }}>{km(c.plusProche.distance)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '11.5px', color: C.muted }}>Aucun générateur de trafic recensé à moins de 500 m.</div>
+              )}
+              {testJ && testJ.erreurAvecPassage != null && (
+                <div style={{ fontSize: '11px', color: testJ.passage ? C.success : C.muted, lineHeight: 1.45 }}>
+                  {testJ.passage
+                    ? `Pris en compte dans les magasins jumeaux : écart au test ramené de ${Math.round(testJ.erreurSansPassage * 100)} % à ${Math.round(testJ.erreurAvecPassage * 100)} % sur vos ventes.`
+                    : `Pas retenu dans l’estimation du CA : sur vos ventes, il n’améliore pas le test (${Math.round(testJ.erreurSansPassage * 100)} % sans, ${Math.round(testJ.erreurAvecPassage * 100)} % avec).`}
+                </div>
+              )}
+            </div>
+          )}
+
           {res && caCentral != null && !masque && (
             <div style={{ ...carte, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -518,7 +582,7 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   {jum && (
                     <>
                       {' '}Magasins jumeaux : on compare le site à vos points sur les habitants à 1 km et à 3 km, les m² concurrents pour
-                      1 000 habitants dans la zone, la surface et le type d’exploitation, puis on retient les {NB_JUMEAUX} plus ressemblants.
+                      1 000 habitants dans la zone, la surface et le type d’exploitation{testJ.passage ? ', ainsi que le passage' : ''}, puis on retient les {NB_JUMEAUX} plus ressemblants.
                       Leur CA, ajusté de l’écart de surface (exposant {fmtReglage(testJ.theta)}, choisi sur vos ventes), est moyenné en donnant
                       plus de poids aux plus ressemblants. Le CA affiché est la moyenne des deux méthodes.
                     </>
@@ -541,6 +605,17 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                 <>
                   {' '}Cannibalisation : part de la zone déjà à moins de {km(rayonKm)} d’un de vos points validés.
                   CA : médiane du CA mensuel de vos points validés × (1 − cannibalisation ÷ 2).
+                </>
+              )}
+              {passage && (
+                <>
+                  {' '}Passage : lieux qui attirent du monde (gares et louages, marchés, grandes surfaces, universités, écoles, mosquées,
+                  santé, administrations et banques, cafés et restaurants), recensés par Overture Maps Foundation (version d’octobre 2026,
+                  licences CDLA et ODbL). Chaque lieu compte selon son poids (3 pour une gare, un marché ou une grande surface, 2 pour une
+                  université, 1,5 pour une mosquée ou un hôpital, 1 pour une école ou une administration, 0,3 pour un café), atténué avec
+                  la distance (moitié du poids à 250 m, quasi nul à 600 m). L’indice sur 100 situe ce score par rapport aux habitants de
+                  toute la Tunisie. Le recensement est incomplet, surtout hors des villes (mosquées et écoles de quartier en particulier) :
+                  il sert à comparer des emplacements, pas à compter les lieux.
                 </>
               )}
             </p>

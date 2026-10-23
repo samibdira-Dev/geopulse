@@ -16,6 +16,7 @@ import VentesImport from '../../components/VentesImport';
 import SimulationPanel from '../../components/SimulationPanel';
 import DemographiePanel from '../../components/DemographiePanel';
 import { surfacesGouvernorats } from '../../lib/simulation';
+import { CLASSES_PAR_DEFAUT, COULEURS_GENERATEURS, chargerGenerateurs } from '../../lib/generateurs';
 import { GOUV_COORDS } from '../../lib/gouvernorats';
 import { C, Message, surtitre } from '../../components/ui';
 import Icon, { Logo } from '../../components/icons';
@@ -42,6 +43,12 @@ export default function ProPage() {
   const [geo, setGeo] = useState(null);
   const [ventes, setVentes] = useState({}); // id du point -> synthèse des ventes (ventes_resume)
   const [filtreTypes, setFiltreTypes] = useState([]); // types affichés sur la carte ; vide = tous
+  const [classesGen, setClassesGen] = useState([]); // classes de générateurs de trafic affichées ; vide = couche masquée
+  const [generateurs, setGenerateurs] = useState(null);
+  // Générateurs de trafic : chargés une fois la société ouverte (indice de passage des points, couche de la carte).
+  useEffect(() => {
+    if (membership && !generateurs) chargerGenerateurs().then(setGenerateurs).catch(() => {});
+  }, [membership, generateurs]);
   const [info, setInfo] = useState(null);
   const [demographie, setDemographie] = useState([]);
   const [rayonKm, setRayonKm] = useState(1);
@@ -481,6 +488,25 @@ export default function ProPage() {
                 </button>
               );
             })}
+            <div style={{ borderTop: '1px solid ' + C.line, margin: '6px 0 4px' }} />
+            <button type="button" className="gp-legend-item" onClick={() => setClassesGen((cur) => (cur.length ? [] : CLASSES_PAR_DEFAUT))}
+              style={{ display: 'flex', alignItems: 'center', gap: '9px', width: '100%', border: 'none', background: classesGen.length ? C.brandSoft : 'transparent', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', fontSize: '12.5px', color: classesGen.length ? C.brandDark : C.body, fontWeight: 600, textAlign: 'left' }}>
+              <Icon name="activity" size={13} />
+              <span style={{ flex: 1 }}>Générateurs de trafic</span>
+              <span style={{ width: 28, height: 16, borderRadius: 999, background: classesGen.length ? C.brand : '#cbd5e1', position: 'relative', flex: 'none', transition: 'background .15s' }}>
+                <span style={{ position: 'absolute', top: 2, left: classesGen.length ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: 'white', transition: 'left .15s' }} />
+              </span>
+            </button>
+            {classesGen.length > 0 && generateurs && generateurs.classes.map((c) => {
+              const actif = classesGen.includes(c.cle);
+              return (
+                <button key={c.cle} type="button" className="gp-legend-item" onClick={() => setClassesGen((cur) => (actif ? (cur.length > 1 ? cur.filter((x) => x !== c.cle) : cur) : [...cur, c.cle]))}
+                  style={{ display: 'flex', alignItems: 'center', gap: '9px', width: '100%', border: 'none', background: 'transparent', borderRadius: '8px', padding: '4px 8px 4px 12px', cursor: 'pointer', fontSize: '12px', color: actif ? C.body : C.faint, textAlign: 'left' }}>
+                  <span style={{ width: 9, height: 9, borderRadius: '50%', background: actif ? COULEURS_GENERATEURS[c.cle] : '#cbd5e1', boxShadow: '0 0 0 1.5px white' }} />
+                  <span style={{ flex: 1, textDecoration: actif ? 'none' : 'line-through' }}>{c.libelle}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -498,6 +524,8 @@ export default function ProPage() {
           view={view}
           ventes={ventes}
           compact={mobile}
+          generateurs={generateurs}
+          classesGenerateurs={classesGen}
           selectedGouv={tab === 'demographie' ? gouvDemo : null}
           zoneKm={tab === 'simuler' && position ? rayonKm : null}
         />

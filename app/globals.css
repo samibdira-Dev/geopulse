@@ -46,6 +46,7 @@ button:not(:disabled):active { transform: translateY(1px); }
 .gp-seg button:hover { color: var(--text); }
 .gp-row:hover { border-color: #c7cbf5 !important; box-shadow: 0 4px 14px rgba(79,70,229,.08) !important; }
 .gp-legend-item:hover { background: rgba(79,70,229,.06); }
+.gp-legend { max-height: calc(100% - 110px); overflow-y: auto; }
 
 /* Carte */
 .leaflet-container {

@@ -7,6 +7,7 @@ import { normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
 
 import { STATUTS, isManagerRole, valeurChamp } from '../lib/points';
 import { caMensuelMoyen, evolution } from '../lib/ventes';
+import { COULEURS_GENERATEURS, indiceNational, niveauPassage, scorePassage } from '../lib/generateurs';
 
 // Pastille colorée selon le type du point ; l'anneau indique le statut de validation.
 // Dessinée sur le canvas (CircleMarker) : la carte reste fluide même avec des milliers de points.
@@ -80,6 +81,42 @@ function MapUpdater({ view }) {
   return null;
 }
 
+// Couche des générateurs de trafic : seulement à partir du zoom 12 et dans la partie visible de la carte.
+const ZOOM_GENERATEURS = 12;
+function CoucheGenerateurs({ generateurs, actives, compact }) {
+  const map = useMap();
+  const [vue, setVue] = useState(() => ({ zoom: map.getZoom(), bounds: map.getBounds().pad(0.2) }));
+  useMapEvents({ moveend: () => setVue({ zoom: map.getZoom(), bounds: map.getBounds().pad(0.2) }) });
+  const visibles = useMemo(() => {
+    if (vue.zoom < ZOOM_GENERATEURS) return [];
+    const classes = new Set(actives.map((cle) => generateurs.classes.findIndex((c) => c.cle === cle)));
+    return generateurs.points.filter((p) => classes.has(p[0]) && vue.bounds.contains([p[1], p[2]]));
+  }, [generateurs, actives, vue]);
+  const r = (compact ? 3.5 : 4.5) + (vue.zoom >= 15 ? 1.5 : 0);
+  return (
+    <>
+      {vue.zoom < ZOOM_GENERATEURS && (
+        <div className="gp-glass" style={{ position: 'absolute', left: '50%', bottom: compact ? '96px' : '24px', transform: 'translateX(-50%)', zIndex: 1000, padding: '7px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 600, color: '#334155', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+          Zoomez pour voir les générateurs de trafic
+        </div>
+      )}
+      {visibles.map((p, i) => {
+        const c = generateurs.classes[p[0]];
+        return (
+          <CircleMarker key={i + '-' + p[1] + '-' + p[2]} center={[p[1], p[2]]} bubblingMouseEvents={false}
+            pathOptions={{ radius: r, color: '#ffffff', weight: 1.2, fillColor: COULEURS_GENERATEURS[c.cle], fillOpacity: 0.95 }}>
+            <Popup>
+              <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '.08em', color: COULEURS_GENERATEURS[c.cle], fontWeight: 700 }}>{c.libelle}</div>
+              <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#0f172a', marginTop: '2px' }}>{p[3] || 'Sans nom'}</div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>Générateur de trafic · Overture Maps</div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+    </>
+  );
+}
+
 function LocationSelector({ onSelect }) {
   useMapEvents({
     click(e) {
@@ -106,6 +143,8 @@ export default function ProMap({
   zoneKm = null,         // rayon de la zone simulée autour du point (km)
   ventes = {},           // id du point -> synthèse des ventes
   compact = false,       // téléphone : points plus petits, pas de boutons de zoom
+  generateurs = null,    // générateurs de trafic (lib/generateurs.js), affichés si des classes sont actives
+  classesGenerateurs = [], // clés des classes de générateurs affichées
 }) {
   const [geoData, setGeoData] = useState(null);
 
@@ -216,6 +255,18 @@ export default function ProMap({
                 </div>
               );
             })()}
+            {generateurs && (() => {
+              const indice = indiceNational(generateurs, scorePassage(generateurs, p.latitude, p.longitude));
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '12px' }}>
+                  <span style={{ color: '#94a3b8' }}>Passage</span>
+                  <span style={{ flex: 1, height: '5px', borderRadius: '5px', background: '#eef0f4', overflow: 'hidden' }}>
+                    <span style={{ display: 'block', width: Math.max(3, indice) + '%', height: '100%', background: '#6366f1' }} />
+                  </span>
+                  <span style={{ color: '#0f172a', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{indice}/100 · {niveauPassage(indice).toLowerCase()}</span>
+                </div>
+              );
+            })()}
             {champs.some((c) => { const v = valeurChamp(p, c); return v !== undefined && v !== null && v !== ''; }) && (
               <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '10px', rowGap: '3px', fontSize: '12px' }}>
                 {champs.map((c) => {
@@ -247,7 +298,7 @@ export default function ProMap({
         </Popup>
       </CircleMarker>
     );
-  }), [ordonnes, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes, compact]);
+  }), [ordonnes, typesById, champsByType, auteurs, currentUserId, role, onEditPoint, ventes, compact, generateurs]);
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -280,6 +331,10 @@ export default function ProMap({
           />
         )}
       
+        {generateurs && classesGenerateurs.length > 0 && (
+          <CoucheGenerateurs generateurs={generateurs} actives={classesGenerateurs} compact={compact} />
+        )}
+
         {ombres}
         {marqueurs}
 
