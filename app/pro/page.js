@@ -11,6 +11,7 @@ import PointsList from '../../components/PointsList';
 import ValidationPanel from '../../components/ValidationPanel';
 import JournalPanel from '../../components/JournalPanel';
 import VisitesPanel from '../../components/VisitesPanel';
+import SaisonsPanel from '../../components/SaisonsPanel';
 import TeamPanel from '../../components/TeamPanel';
 import TypesAdmin from '../../components/TypesAdmin';
 import VentesImport from '../../components/VentesImport';
@@ -327,7 +328,7 @@ export default function ProPage() {
     ['points', 'list', 'Points'],
     ['visites', 'calendar', 'Visites'],
     ['demographie', 'users', 'Démo\u00ADgraphie'],
-    ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'chart', 'Import']] : []),
+    ...(manager ? [['valider', 'checkCircle', 'Valider', aValiderCount], ['ventes', 'upload', 'Import'], ['saisons', 'chart', 'Saisons']] : []),
     ...(role === 'admin' ? [['types', 'tag', 'Types'], ['equipe', 'team', 'Équipe']] : []),
     ...(manager ? [['journal', 'history', 'Journal']] : []),
   ];
@@ -461,6 +462,10 @@ export default function ProPage() {
 
             {tab === 'ventes' && manager && (
               <VentesImport societeId={membership.societe_id} points={points} types={types} champs={champs} onChanged={charger} />
+            )}
+
+            {tab === 'saisons' && manager && (
+              <SaisonsPanel societeId={membership.societe_id} points={points} typesById={typesById} />
             )}
 
             {tab === 'types' && role === 'admin' && (
