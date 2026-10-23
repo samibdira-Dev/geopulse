@@ -2,17 +2,32 @@
 import { useMemo } from 'react';
 import { GOUV_COORDS, normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
 import { statsGouvernorat } from '../lib/simulation';
-import { PALIERS_DENSITE, couleurDensite } from '../lib/recensement';
+import { PALIERS_DENSITE, PALIERS_PAUVRETE, couleurDensite, couleurPauvrete } from '../lib/recensement';
 import { C, Empty, SectionTitle, inputStyle, surtitre } from './ui';
 
 const fmt = (n) => (n == null || n === '' ? '—' : Number(n).toLocaleString('fr-FR'));
 
 // Population et ménages par délégation (recensement INS 2024, lib/recensement.js), revenu saisi dans la table INS.
-export default function DemographiePanel({ demographie, gouvernorat, onGouvernorat }) {
+export default function DemographiePanel({ demographie, gouvernorat, onGouvernorat, carte = 'densite', onCarte }) {
+  const pauvrete = demographie.some((d) => d.pauvrete != null);
+  const vuePauvrete = pauvrete && carte === 'pauvrete';
   const lignes = useMemo(() => {
     const l = gouvernorat === 'Tous' ? demographie : demographie.filter((d) => sameGouvernorat(d.gouvernorat, gouvernorat));
-    return [...l].sort((a, b) => (Number(b.population) || 0) - (Number(a.population) || 0));
-  }, [demographie, gouvernorat]);
+    return [...l].sort(vuePauvrete
+      ? (a, b) => (b.indice_depense ?? 0) - (a.indice_depense ?? 0)
+      : (a, b) => (Number(b.population) || 0) - (Number(a.population) || 0));
+  }, [demographie, gouvernorat, vuePauvrete]);
+  // Taux de pauvreté et pouvoir d'achat moyens de la sélection, pondérés par les habitants.
+  const moyennes = useMemo(() => {
+    const l = lignes.filter((d) => d.pauvrete != null && d.population > 0);
+    const pop = l.reduce((s, d) => s + d.population, 0);
+    if (!pop) return null;
+    return {
+      pauvrete: l.reduce((s, d) => s + d.pauvrete * d.population, 0) / pop,
+      indice: l.reduce((s, d) => s + d.indice_depense * d.population, 0) / pop,
+    };
+  }, [lignes]);
+  const virgule = (v, n = 1) => (Math.round(v * 10 ** n) / 10 ** n).toLocaleString('fr-FR');
   const total = gouvernorat === 'Tous'
     ? { population: demographie.reduce((s, d) => s + (Number(d.population) || 0), 0), menages: demographie.reduce((s, d) => s + (Number(d.nb_menages) || 0), 0), revenu: null }
     : statsGouvernorat(demographie, gouvernorat);
@@ -42,13 +57,34 @@ export default function DemographiePanel({ demographie, gouvernorat, onGouvernor
               </div>
             ))}
           </div>
+          {moyennes && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(199,210,254,.18)' }}>
+              <div>
+                <div className="num" style={{ fontSize: '17px', fontWeight: 700 }}>{virgule(moyennes.pauvrete)} %</div>
+                <div style={{ fontSize: '11px', color: '#c7d2fe' }}>Pauvreté</div>
+              </div>
+              <div>
+                <div className="num" style={{ fontSize: '17px', fontWeight: 700 }}>{virgule(moyennes.indice, 2)}</div>
+                <div style={{ fontSize: '11px', color: '#c7d2fe' }}>Pouvoir d’achat</div>
+              </div>
+              <div style={{ fontSize: '10.5px', color: '#a5b4fc', lineHeight: 1.4, alignSelf: 'center' }}>Tunisie : 15,3 % et 1 (moyenne)</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {pauvrete && onCarte && (
+        <div style={{ display: 'flex', gap: '2px', background: C.bg, border: '1px solid ' + C.line, borderRadius: '10px', padding: '3px' }}>
+          {[['densite', 'Densité'], ['pauvrete', 'Pauvreté et pouvoir d’achat']].map(([m, l]) => (
+            <button key={m} type="button" onClick={() => onCarte(m)} style={{ flex: 1, border: 'none', borderRadius: '8px', padding: '6px 8px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', background: carte === m ? 'white' : 'transparent', color: carte === m ? C.brand : C.muted, boxShadow: carte === m ? '0 1px 3px rgba(15,23,42,.12)' : 'none' }}>{l}</button>
+          ))}
         </div>
       )}
 
       {recensement && (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 10px', fontSize: '11px', color: C.muted }}>
-          <span style={{ fontWeight: 600, color: C.body }}>Habitants / km²</span>
-          {[...PALIERS_DENSITE].reverse().map(([, couleur, libelle]) => (
+          <span style={{ fontWeight: 600, color: C.body }}>{vuePauvrete ? 'Taux de pauvreté' : 'Habitants / km²'}</span>
+          {[...(vuePauvrete ? PALIERS_PAUVRETE : PALIERS_DENSITE)].reverse().map(([, couleur, libelle]) => (
             <span key={libelle} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: 10, height: 10, borderRadius: 3, background: couleur }} />{libelle}
             </span>
@@ -64,7 +100,9 @@ export default function DemographiePanel({ demographie, gouvernorat, onGouvernor
         <div key={z.id ?? `${z.gouvernorat}-${z.delegation}-${i}`} className="gp-row" style={{ border: '1px solid ' + C.line, borderRadius: '14px', padding: '12px 14px', background: 'white' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '13px', color: '#1e293b', minWidth: 0 }}>
-              {z.surface_km2 > 0 && <span style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: couleurDensite(z.population / z.surface_km2) }} />}
+              {vuePauvrete && z.pauvrete != null
+                ? <span style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: couleurPauvrete(z.pauvrete) }} />
+                : z.surface_km2 > 0 && <span style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: couleurDensite(z.population / z.surface_km2) }} />}
               {gouvernorat === 'Tous' ? `${normalizeGouvernorat(z.gouvernorat) || z.gouvernorat} — ` : ''}{z.delegation}
             </span>
             {z.source ? (
@@ -81,6 +119,24 @@ export default function DemographiePanel({ demographie, gouvernorat, onGouvernor
               ? <div><div style={surtitre}>Revenu moy.</div><b className="num" style={{ color: '#059669' }}>{fmt(z.revenu_moyen_tnd)} TND</b></div>
               : <div><div style={surtitre}>Densité</div><b className="num" style={{ color: C.text }}>{z.surface_km2 > 0 ? fmt(Math.round(z.population / z.surface_km2)) : '—'}</b> <span style={{ fontSize: '11px', color: C.muted }}>hab./km²</span></div>}
           </div>
+          {z.pauvrete != null && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', fontSize: '13px', color: '#475569', marginTop: '8px' }}>
+              <div>
+                <div style={surtitre}>Pauvreté</div>
+                <b className="num" style={{ color: couleurPauvrete(z.pauvrete) === '#facc15' ? '#a16207' : couleurPauvrete(z.pauvrete) }}>{virgule(z.pauvrete)} %</b>
+                {z.pauvrete_source === 'gouvernorat' && <span title="Pas de chiffre propre à cette délégation : taux du gouvernorat" style={{ fontSize: '10.5px', color: C.muted }}> gouv.</span>}
+              </div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <div style={surtitre}>Pouvoir d’achat</div>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <b className="num" style={{ color: C.text }}>{virgule(z.indice_depense, 2)}</b>
+                  <span style={{ flex: 1, height: 6, borderRadius: 6, background: C.bg, overflow: 'hidden', maxWidth: 120 }}>
+                    <span style={{ display: 'block', height: '100%', width: Math.min(100, (z.indice_depense / 2) * 100) + '%', background: z.indice_depense >= 1 ? C.success : C.warning, borderRadius: 6 }} />
+                  </span>
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       ))}
 
@@ -91,6 +147,14 @@ export default function DemographiePanel({ demographie, gouvernorat, onGouvernor
           est réparti selon les habitants de la grille de 250 m (Meta et CIESIN) dans leurs contours (Overture Maps, ODbL) : sur les
           29 délégations où l’INS a publié son chiffre, l’écart médian de cette méthode est de 7 %. Ménages : population ÷ taille moyenne
           des ménages du gouvernorat (INS 2024).
+          {pauvrete && (
+            <>
+              {' '}Pauvreté : INS et Banque mondiale, « Carte de la pauvreté en Tunisie » (2020), part des habitants sous le seuil
+              de pauvreté, estimée sur le recensement 2014 et l’enquête consommation 2015. Pouvoir d’achat : dépense moyenne par
+              habitant déduite de ce taux (1 = moyenne nationale), recalée sur la dépense de chaque région (INS 2021). C’est lui qui
+              ajuste le potentiel de marché du simulateur.
+            </>
+          )}
         </div>
       )}
     </div>

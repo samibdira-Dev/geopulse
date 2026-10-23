@@ -7,7 +7,7 @@ import { normalizeGouvernorat, sameGouvernorat } from '../lib/gouvernorats';
 
 import { STATUTS, isManagerRole, valeurChamp } from '../lib/points';
 import { caMensuelMoyen, evolution } from '../lib/ventes';
-import { couleurDensite } from '../lib/recensement';
+import { couleurDensite, couleurPauvrete } from '../lib/recensement';
 import { COULEURS_GENERATEURS, indiceNational, niveauPassage, scorePassage } from '../lib/generateurs';
 
 // Pastille colorée selon le type du point ; l'anneau indique le statut de validation.
@@ -147,6 +147,7 @@ export default function ProMap({
   generateurs = null,    // générateurs de trafic (lib/generateurs.js), affichés si des classes sont actives
   classesGenerateurs = [], // clés des classes de générateurs affichées
   delegations = null,    // contours et chiffres des délégations (lib/recensement.js) : carte de densité
+  carteDelegations = 'densite', // 'densite' (habitants / km²) ou 'pauvrete' (taux de pauvreté)
   isochrone = null,      // zones accessibles autour de l'emplacement simulé : { url, bounds } (lib/isochrones.js)
 }) {
   const [geoData, setGeoData] = useState(null);
@@ -338,18 +339,20 @@ export default function ProMap({
           // Carte de densité des délégations (onglet Démographie), au-dessus des gouvernorats.
           <Pane name="delegations" style={{ zIndex: 405 }}>
             <GeoJSON
-              key={'del-' + (selectedGouv || 'Tous')}
+              key={'del-' + carteDelegations + '-' + (selectedGouv || 'Tous')}
               data={delegations}
               style={(f) => {
                 const p = f.properties;
                 const dansGouv = !selectedGouv || selectedGouv === 'Tous' || sameGouvernorat(p.gouvernorat, selectedGouv);
-                return { fillColor: couleurDensite(p.population / Math.max(0.1, p.surface_km2)), fillOpacity: dansGouv ? 0.55 : 0.12, color: '#ffffff', weight: dansGouv ? 1 : 0.4, opacity: dansGouv ? 0.9 : 0.3 };
+                const couleur = carteDelegations === 'pauvrete' && p.pauvrete != null ? couleurPauvrete(p.pauvrete) : couleurDensite(p.population / Math.max(0.1, p.surface_km2));
+                return { fillColor: couleur, fillOpacity: dansGouv ? 0.55 : 0.12, color: '#ffffff', weight: dansGouv ? 1 : 0.4, opacity: dansGouv ? 0.9 : 0.3 };
               }}
               onEachFeature={(f, layer) => {
                 const p = f.properties;
                 const densite = Math.round(p.population / Math.max(0.1, p.surface_km2));
                 layer.bindTooltip(
                   `<b>${p.delegation}</b> · ${p.gouvernorat}<br>${p.population.toLocaleString('fr-FR')} hab. · ${densite.toLocaleString('fr-FR')} hab./km²`
+                  + (p.pauvrete != null ? `<br>Pauvreté ${p.pauvrete.toLocaleString('fr-FR')} % · pouvoir d'achat ${p.indice_depense.toLocaleString('fr-FR')}` : '')
                   + (p.source === 'rgph2024' ? '<br><span style="color:#059669">Recensement 2024</span>' : '<br><span style="color:#94a3b8">Estimation 2024</span>'),
                   { sticky: true, direction: 'top', offset: [0, -8] }
                 );

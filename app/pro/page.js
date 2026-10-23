@@ -58,6 +58,7 @@ export default function ProPage() {
   const demographie = useMemo(() => fusionnerDemographie(delegations, demographieTable), [delegations, demographieTable]);
   const [rayonKm, setRayonKm] = useState(1);
   const [gouvDemo, setGouvDemo] = useState('Tous');
+  const [carteDemo, setCarteDemo] = useState('densite');
   const requete = useRef(0);
   // Téléphone : carte plein écran, onglets en bas, panneau fermé, à moitié ou en plein écran.
   const [mobile, setMobile] = useState(false);
@@ -419,11 +420,12 @@ export default function ProPage() {
                 ventes={ventes}
                 onAjouter={() => { setEditing(null); setTab('nouveau'); }}
                 onIsochrone={setIsochrone}
+                delegations={delegations}
               />
             )}
 
             {tab === 'demographie' && (
-              <DemographiePanel demographie={demographie} gouvernorat={gouvDemo} onGouvernorat={choisirGouvDemo} />
+              <DemographiePanel demographie={demographie} gouvernorat={gouvDemo} onGouvernorat={choisirGouvDemo} carte={carteDemo} onCarte={setCarteDemo} />
             )}
 
             {tab === 'points' && (
@@ -535,6 +537,7 @@ export default function ProPage() {
           classesGenerateurs={classesGen}
           selectedGouv={tab === 'demographie' ? gouvDemo : null}
           delegations={tab === 'demographie' ? delegations : null}
+          carteDelegations={carteDemo}
           isochrone={tab === 'simuler' && position ? isochrone : null}
           zoneKm={tab === 'simuler' && position ? rayonKm : null}
         />

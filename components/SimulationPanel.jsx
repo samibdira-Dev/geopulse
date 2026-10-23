@@ -9,6 +9,7 @@ import { depenseDuType, potentielMarche, reperesReseau } from '../lib/marche';
 import { NB_JUMEAUX, estimerParJumeaux, preparerReseau, profilSite, testerJumeaux } from '../lib/jumeaux';
 import { REGLAGE_DEFAUT } from '../lib/simulation';
 import { COULEURS_DUREES, DUREES, calculerIsochrone, chargerVitesses, habitantsParDuree, imageIsochrone, tempsJusqua } from '../lib/isochrones';
+import { couleurPauvrete, delegationEn } from '../lib/recensement';
 import { COULEURS_GENERATEURS, SINGULIERS, chargerGenerateurs, niveauPassage, passageAutour } from '../lib/generateurs';
 import { C, Empty, Message, SectionTitle, btn, carte, inputStyle, labelStyle, surtitre } from './ui';
 import Icon from './icons';
@@ -44,7 +45,7 @@ function NoteBadge({ note, clair }) {
 }
 
 // Simulateur d'emplacement : population de la zone, cannibalisation, concurrence et CA estimé.
-export default function SimulationPanel({ position, rayonKm, onRayon, points, typesById, champs, demographie, surfaces, ventes, onAjouter, onIsochrone }) {
+export default function SimulationPanel({ position, rayonKm, onRayon, points, typesById, champs, demographie, surfaces, ventes, onAjouter, onIsochrone, delegations = null }) {
   const typesPdv = useMemo(() => Object.values(typesById).filter((t) => ['point_de_vente', 'client'].includes(t.categorie)).map((t) => t.id), [typesById]);
   const champsDispo = useMemo(() => champsCA(champs, typesPdv), [champs, typesPdv]);
   const [cleCA, setCleCA] = useState('');
@@ -187,8 +188,10 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
   // Marché (étape 5) : dépense du secteur du type étudié, sinon du premier type de point de vente qui a un secteur.
   const typeMarche = depenseDuType(typeRenta) ? typeRenta : typesExploitation.find((t) => depenseDuType(t)) || typeRenta;
   const depense = depenseDuType(typeMarche);
-  const marche = res && depense ? potentielMarche(res.population, depense.mensuelle, res.gouvernorat) : null;
-  const reperes = useMemo(() => reperesReseau(reseauJ, depense ? depense.mensuelle : 0), [reseauJ, depense && depense.mensuelle]);
+  // Délégation du site : son indice de dépense (pouvoir d'achat) remplace celui de la région.
+  const delegationSite = useMemo(() => (position ? delegationEn(delegations, position.lat, position.lng) : null), [delegations, position && position.lat, position && position.lng]);
+  const marche = res && depense ? potentielMarche(res.population, depense.mensuelle, res.gouvernorat, delegationSite) : null;
+  const reperes = useMemo(() => reperesReseau(reseauJ, depense ? depense.mensuelle : 0, delegations), [reseauJ, depense && depense.mensuelle, delegations]);
   const partCaptee = marche && caCentral != null && !masque ? caCentral / marche.potentiel : null;
   const pressionRel = profilEtudie && reperes && reperes.pressionMediane > 0 ? profilEtudie.pression / reperes.pressionMediane : null;
   const niveauPression = !profilEtudie ? null : profilEtudie.pression === 0 ? { label: 'Aucun concurrent', color: C.success }
@@ -340,8 +343,16 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                   <div className="num" style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '-.02em', color: C.text }}>{fmt(marche.potentiel)} <span style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}>TND/mois</span></div>
                   <div style={{ fontSize: '11px', color: C.muted, lineHeight: 1.45 }}>
                     {fmt(res.population)} habitants × {(Math.round(depense.mensuelle * 10) / 10).toLocaleString('fr-FR')} TND/hab./mois
-                    {marche.region ? ` × ${(Math.round(marche.indice * 100) / 100).toLocaleString('fr-FR')} (niveau de dépense ${marche.region})` : ''}
+                    {marche.delegation ? ` × ${(Math.round(marche.indice * 100) / 100).toLocaleString('fr-FR')} (pouvoir d’achat de ${marche.delegation})`
+                      : marche.region ? ` × ${(Math.round(marche.indice * 100) / 100).toLocaleString('fr-FR')} (niveau de dépense ${marche.region})` : ''}
                   </div>
+                  {marche.pauvrete != null && (
+                    <div style={{ marginTop: '6px', fontSize: '11.5px', color: C.body, lineHeight: 1.5 }}>
+                      <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 6, verticalAlign: '-1px', background: couleurPauvrete(marche.pauvrete) }} />
+                      Pauvreté à {marche.delegation} : <b className="num" style={{ color: C.text }}>{marche.pauvrete.toLocaleString('fr-FR')} %</b>{' '}
+                      <span style={{ color: C.muted }}>(Tunisie : 15,3 %)</span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ fontSize: '11.5px', color: C.warning, lineHeight: 1.5 }}>
@@ -397,7 +408,7 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                     ])}
                   </div>
                   {depense && zones[1].habitants > 0 && (() => {
-                    const m = potentielMarche(zones[1].habitants, depense.mensuelle, res.gouvernorat);
+                    const m = potentielMarche(zones[1].habitants, depense.mensuelle, res.gouvernorat, delegationSite);
                     return m ? (
                       <div style={{ fontSize: '11.5px', color: C.body, lineHeight: 1.5 }}>
                         Marché à 10 min {modeTrajet === 'voiture' ? 'en voiture' : 'à pied'} : <b className="num" style={{ color: C.text }}>{fmt(m.potentiel)} TND/mois</b> de dépense des habitants dans le secteur.
@@ -660,7 +671,10 @@ export default function SimulationPanel({ position, rayonKm, onRayon, points, ty
                     <>
                       {' '}Potentiel de marché : habitants de la zone × dépense mensuelle par habitant du secteur
                       {depense.saisie ? ' (valeur saisie par votre administrateur)' : depense.secteur ? ` (INS, enquête budget des ménages 2021 : ${depense.secteur.postes})` : ''}
-                      {' '}× niveau de dépense de la région rapporté à la moyenne nationale (INS 2021, 5 468 TND par personne et par an).
+                      {' '}× indice de pouvoir d’achat de la délégation du site (1 = moyenne nationale de 5 468 TND par personne et par an,
+                      INS 2021). Cet indice part du taux de pauvreté de la délégation (INS et Banque mondiale, carte de la pauvreté 2020) :
+                      moins de pauvreté signifie une dépense moyenne plus élevée. Il est recalé pour que chaque région garde sa dépense
+                      moyenne de l’enquête INS 2021. Sans délégation connue, c’est l’indice de la région qui s’applique.
                       Part captée : CA estimé ÷ potentiel. Pression concurrentielle : m² de vente des concurrents à moins de {km(rayonKm)} pour
                       1 000 habitants (surface inconnue : médiane des concurrents saisis).
                     </>
