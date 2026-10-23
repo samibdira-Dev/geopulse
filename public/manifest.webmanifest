@@ -1,0 +1,22 @@
+{
+  "name": "GeoPulse – Géomarketing Tunisie",
+  "short_name": "GeoPulse",
+  "description": "Cartographiez votre réseau, analysez vos zones et estimez le chiffre d'affaires d'un nouvel emplacement.",
+  "id": "/pro",
+  "start_url": "/pro",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "lang": "fr",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "categories": ["business", "productivity", "navigation"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Ouvrir la carte", "url": "/pro", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { traduireErreur } from '../lib/points';
 import { inputStyle, labelStyle, btn, Message } from './ui';
@@ -11,6 +11,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+
+  // Lien « Demander l'ouverture » de la page d'accueil : ouvre directement la création de compte.
+  useEffect(() => { if (window.location.hash === '#inscription') setMode('inscription'); }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -40,10 +43,10 @@ export default function LoginScreen() {
   return (
     <main className="gp-backdrop gp-login" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '72px', padding: '24px', boxSizing: 'border-box' }}>
       <div className="gp-login-pitch" style={{ maxWidth: '440px', color: 'white' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'white', textDecoration: 'none' }}>
           <Logo size={44} />
           <span style={{ fontSize: '22px', fontWeight: 800, letterSpacing: '-.02em' }}>GeoPulse</span>
-        </div>
+        </a>
         <h2 style={{ fontSize: '38px', lineHeight: 1.1, letterSpacing: '-.03em', fontWeight: 800, margin: '36px 0 14px' }}>
           Le géomarketing de précision pour la Tunisie.
         </h2>
@@ -101,6 +104,7 @@ export default function LoginScreen() {
         >
           {mode === 'connexion' ? 'Pas encore de compte ? Créer un compte' : 'J’ai déjà un compte : me connecter'}
         </button>
+        <a href="/" style={{ textAlign: 'center', color: '#64748b', fontSize: '12.5px', textDecoration: 'none' }}>← Découvrir GeoPulse</a>
       </form>
     </main>
   );
