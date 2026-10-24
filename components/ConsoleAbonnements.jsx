@@ -152,7 +152,7 @@ function Reglages({ onFermer }) {
       <div style={surtitre}>Formules</div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse', fontSize: '12px' }}>
-          <thead><tr style={{ color: C.muted, textAlign: 'left' }}><th style={{ padding: '4px' }}>Nom</th><th>Prix HT / mois (vide = sur devis)</th><th>Utilisateurs max</th><th>Points max</th><th>Description</th><th>Proposée</th></tr></thead>
+          <thead><tr style={{ color: C.muted, textAlign: 'left' }}><th style={{ padding: '4px' }}>Nom</th><th>Prix HT / mois (vide = sur devis)</th><th>Comptes bureau max</th><th>Points max</th><th>Description</th><th>Proposée</th></tr></thead>
           <tbody>
             {formules.map((f, i) => (
               <tr key={f.code}>

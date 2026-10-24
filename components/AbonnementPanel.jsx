@@ -161,7 +161,7 @@ export default function AbonnementPanel({ societeId, societeNom }) {
               </div>
               {f.description && <div style={{ fontSize: '12px', color: C.muted, lineHeight: 1.45 }}>{f.description}</div>}
               <div style={{ fontSize: '11.5px', color: C.body }}>
-                {f.max_utilisateurs ? `Jusqu’à ${f.max_utilisateurs} utilisateurs` : 'Utilisateurs illimités'} · {f.max_points ? `${Number(f.max_points).toLocaleString('fr-FR')} points` : 'points illimités'}
+                {f.max_utilisateurs ? `${f.max_utilisateurs} comptes bureau` : 'Comptes bureau illimités'} · {f.max_points ? `${Number(f.max_points).toLocaleString('fr-FR')} points` : 'points illimités'}
               </div>
               {montant != null ? (
                 <button type="button" disabled={busy} onClick={() => choisir(f)} style={{ ...btn(undefined, busy), padding: '8px 12px', fontSize: '12.5px' }}>

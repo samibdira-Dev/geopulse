@@ -12,7 +12,7 @@ export const STATUTS_SOCIETE = {
   suspendue: { label: 'Suspendue', color: '#b91c1c', bg: '#fef2f2' },
   refusee: { label: 'Refusée', color: '#475569', bg: '#f1f5f9' },
 };
-const FORMULES = ['Essai', 'Essentiel', 'Pro', 'Entreprise'];
+const FORMULES = ['Essai', 'Essentiel', 'Pro', 'Business', 'Entreprise'];
 const GENRES = { appel: 'Appel', rdv: 'Rendez-vous', relance: 'Relance', note: 'Note', statut: 'Statut' };
 
 const JOUR = 86400000;
