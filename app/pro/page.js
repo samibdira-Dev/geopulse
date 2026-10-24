@@ -27,6 +27,7 @@ import { CLASSES_PAR_DEFAUT, COULEURS_GENERATEURS, chargerGenerateurs } from '..
 import { GOUV_COORDS } from '../../lib/gouvernorats';
 import { C, Message, surtitre } from '../../components/ui';
 import Icon, { Logo } from '../../components/icons';
+import RailNav from '../../components/RailNav';
 
 const ProMap = dynamic(() => import('../../components/ProMap'), {
   ssr: false,
@@ -376,19 +377,7 @@ export default function ProPage() {
         {/* Rail de navigation */}
         <div className="pro-rail" style={{ width: '84px', background: C.ink, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '14px 10px', gap: '12px', boxSizing: 'border-box' }}>
           <div className="gp-rail-logo"><Logo size={40} /></div>
-          <nav className="gp-rail-nav" style={{ display: 'flex', flexDirection: 'column', gap: '2px', width: '100%', flex: '1 1 auto', minHeight: 0, overflowY: 'auto', scrollbarWidth: 'none' }}>
-            {onglets.map(([k, icone, label, badge]) => (
-              <button key={k} type="button" onClick={() => choisirOnglet(k)} title={label.replace('\u00AD', '')}
-                className={'gp-rail-item' + (tab === k ? ' actif' : '')}
-                style={{ position: 'relative', border: 'none', background: undefined, borderRadius: '12px', padding: '7px 2px 6px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', minWidth: '62px', flex: 'none' }}>
-                <Icon name={icone} size={20} />
-                <span style={{ fontSize: '10.5px', fontWeight: 600, letterSpacing: '.01em', lineHeight: 1.1, textAlign: 'center' }}>{label}</span>
-                {badge ? (
-                  <span style={{ position: 'absolute', top: '4px', right: '9px', minWidth: '17px', height: '17px', padding: '0 4px', boxSizing: 'border-box', borderRadius: '9px', background: '#f59e0b', color: C.ink, fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{badge}</span>
-                ) : null}
-              </button>
-            ))}
-          </nav>
+          <RailNav onglets={onglets} tab={tab} onChoisir={choisirOnglet} />
           <div className="gp-rail-bas" style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
             <div title={email} style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg,#334155,#1e293b)', color: '#e2e8f0', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,.12)' }}>{initiales}</div>
             {plateformeAdmin && (
